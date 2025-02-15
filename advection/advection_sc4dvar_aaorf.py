@@ -15,9 +15,9 @@ continue_annotation()
 
 Jhat = FourDVarReducedFunctional(
     Control(control),
-    background_iprod=norm2(B),
-    observation_iprod=norm2(R),
-    observation_err=observation_error(0),
+    background_covariance=B,
+    observation_covariance=R,
+    observation_error=observation_error(0),
     weak_constraint=False)
 
 nstep = 0
@@ -38,13 +38,13 @@ with Jhat.recording_stages(nstages=len(targets)-1) as stages:
         # take observation
         obs_err = observation_error(stage.observation_index)
         stage.set_observation(qn, obs_err,
-                              observation_iprod=norm2(R))
+                              observation_covariance=R)
 
 pause_annotation()
 
 print(f"{taylor_test(Jhat, control, values[0]) = }")
 
-options = {'disp': True, 'ftol': 1e-2}
+options = {'disp': fd.COMM_WORLD.rank == 0, 'ftol': 1e-2}
 derivative_options = {'riesz_representation': None}
 
 opt = minimize(Jhat, options=options, method="L-BFGS-B",

@@ -7,8 +7,9 @@ from advection_utils import *
 
 
 def make_fdvrf():
-    control = fd.EnsembleFunction(
-        ensemble, [V for _ in range(len(targets))])
+    control_space = fd.EnsembleFunctionSpace(
+        [V for _ in range(len(targets))], ensemble)
+    control = fd.EnsembleFunction(control_space)
 
     for x in control.subfunctions:
         x.assign(background)

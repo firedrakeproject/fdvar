@@ -185,18 +185,9 @@ PETSc.Sys.Print("Setting up adjoint model")
 global_comm.Barrier()
 
 
-# weighted l2 inner product
-def wl2prod(x, w=1.0, ad_block_tag=None):
-    return fd.assemble(fd.inner(x, w*x)*fd.dx, ad_block_tag=ad_block_tag)**2
-
-
 def observation_err(i, state, name=None):
     return fd.Function(Vobs, name=f'Observation error H{i}(x{i}) - y{i}').assign(H(state, name) - y[i], ad_block_tag=f"Observation error calculation {i}")
 
-
-background_iprod = partial(wl2prod, w=B, ad_block_tag='Background inner product')
-observation_iprod = partial(wl2prod, w=R, ad_block_tag='Observation inner product')
-model_iprod = partial(wl2prod, w=Q, ad_block_tag='Model inner product')
 
 # Initialise forward model from prior/background initial conditions
 # and accumulate weak constraint functional as we go
@@ -204,17 +195,9 @@ model_iprod = partial(wl2prod, w=Q, ad_block_tag='Model inner product')
 uapprox = [background.copy(deepcopy=True, annotate=False)]
 
 # Only initial rank needs data for initial conditions or time
-if trank == 0:
-    background_iprod0 = background_iprod
-    if initial_observations:
-        observation_iprod0 = observation_iprod
-        observation_err0 = partial(observation_err, 0, name='Model observation 0')
-    else:
-        observation_iprod0 = None
-        observation_err0 = None
+if trank == 0 and initial_observations:
+    observation_err0 = partial(observation_err, 0, name='Model observation 0')
 else:
-    background_iprod0 = None
-    observation_iprod0 = None
     observation_err0 = None
 
 ##################################################
@@ -226,18 +209,20 @@ else:
 # first rank has one extra control for the initial conditions
 nlocal_controls = nlocal_observations + (1 if trank == 0 else 0)
 
-aaofunc = fd.EnsembleFunction(ensemble, [V for _ in range(nlocal_controls)])
+control_space = fd.EnsembleFunctionSpace(
+    [V for _ in range(nlocal_controls)], ensemble)
+control = fd.EnsembleFunction(control_space)
 
 if trank == 0:
-    aaofunc.subfunctions[0].assign(background)
+    control.subfunctions[0].assign(background)
 
 continue_annotation()
 
 Jhat = FourDVarReducedFunctional(
-    Control(aaofunc),
-    background_iprod=background_iprod0,
-    observation_iprod=observation_iprod0,
-    observation_err=observation_err0,
+    Control(control),
+    background_covariance=B,
+    observation_covariance=R,
+    observation_error=observation_err0,
     weak_constraint=(args.constraint == 'weak'))
 
 Jhat.background.topological.rename("Background")
@@ -282,13 +267,10 @@ with Jhat.recording_stages(t=0.0, nsteps=0) as stages:
             observation_err, local_obs_idx,
             name=f'Model observation {stage.observation_index}')
 
-        model_iprod = partial(wl2prod, w=Q,
-                              ad_block_tag=f'Model inner product {stage.observation_index}')
-
         # record the observation at the end of the stage
         stage.set_observation(un, obs_error,
-                              observation_iprod=observation_iprod,
-                              forward_model_iprod=model_iprod)
+                              observation_covariance=R,
+                              forward_model_covariance=Q)
         # PETSc.Sys.Print(f"{fd.norm(un) = }")
 
 global_comm.Barrier()

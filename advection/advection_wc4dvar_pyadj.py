@@ -12,10 +12,10 @@ control = [background.copy(deepcopy=True)
 continue_annotation()
 
 # background functional
-J = norm2(B)(control[0] - background)
+J = covariance_norm(control[0] - background, B)
 
 # initial observation functional
-J += norm2(R)(observation_error(0)(control[0]))
+J += covariance_norm(observation_error(0)(control[0]), R)
 
 nstep = 0
 for i in range(1, len(control)):
@@ -33,10 +33,10 @@ for i in range(1, len(control)):
         control[i].assign(qn)
 
     # model error functional
-    J += norm2(Q)(qn - control[i])
+    J += covariance_norm(qn - control[i], Q)
 
     # observation functional
-    J += norm2(R)(observation_error(i)(control[i]))
+    J += covariance_norm(observation_error(i)(control[i]), R)
 
 pause_annotation()
 

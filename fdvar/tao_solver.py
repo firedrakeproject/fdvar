@@ -112,14 +112,15 @@ class GradientNormCtx:
         self._ycofunc = self._xfunc.riesz_representation()
 
         # TODO: Just implement EnsembleFunction._ad_convert_type
-        v = fd.TestFunction(self._xfunc._function_space)
-        self.M = fd.inner(v, self._xfunc._fbuf)*fd.dx
+        efs = Jhat.control_space
+        v = fd.TestFunction(efs._full_local_space)
+        self.M = fd.inner(v, self._xfunc._full_local_function)*fd.dx
 
     def mult(self, mat, x, y):
         with self._xfunc.vec_wo() as xvec:
             x.copy(xvec)
 
-        fd.assemble(self.M, tensor=self._ycofunc._fbuf)
+        fd.assemble(self.M, tensor=self._ycofunc._full_local_function)
 
         with self._ycofunc.vec_ro() as yvec:
             yvec.copy(y)

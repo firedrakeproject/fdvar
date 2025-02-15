@@ -11,10 +11,10 @@ control = background.copy(deepcopy=True)
 continue_annotation()
 
 # background functional
-J = norm2(B)(control - background)
+J = covariance_norm(control - background, B)
 
 # initial observation functional
-J += norm2(R)(observation_error(0)(control))
+J += covariance_norm(observation_error(0)(control), R)
 
 nstep = 0
 qn.assign(control)
@@ -28,7 +28,7 @@ for i in range(1, len(targets)):
         nstep += 1
 
     # observation functional
-    J += norm2(R)(observation_error(i)(qn))
+    J += covariance_norm(observation_error(i)(qn), R)
 
 pause_annotation()
 
@@ -36,7 +36,7 @@ Jhat = ReducedFunctional(J, Control(control))
 
 print(f"{taylor_test(Jhat, control, values[0]) = }")
 
-options = {'disp': True, 'ftol': 1e-2}
+options = {'disp': fd.COMM_WORLD.rank == 0, 'ftol': 1e-2}
 derivative_options = {'riesz_representation': 'l2'}
 
 opt = minimize(Jhat, options=options, method="L-BFGS-B",
