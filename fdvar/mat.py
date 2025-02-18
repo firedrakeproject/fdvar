@@ -146,13 +146,12 @@ def saddle_ises(fdvrf):
 
 
 def FDVarSaddlePointKSP(fdvrf, solver_parameters, options_prefix=None):
-    ensemble = fdvrf.ensemble
-
     saddlemat = FDVarSaddlePointMat(fdvrf)
 
-    options = OptionsManager(solver_parameters, options_prefix)
+    ksp = PETSc.KSP().create(comm=fdvrf.ensemble.global_comm)
+    ksp.setOperators(saddlemat, saddlemat)
 
-    ksp = PETSc.KSP().create(comm=ensemble.global_comm)
+    options = OptionsManager(solver_parameters, options_prefix)
     options.set_from_options(ksp)
 
     return ksp, options
@@ -452,7 +451,6 @@ class AllAtOnceRFMatCtx(EnsembleMatCtxBase):
         initial_rank = 0 if action == TLM else (self.ensemble.ensemble_size - 1)
         if self.ensemble.ensemble_rank != initial_rank:
             self.xprevs.insert(self.xhalo, 0)
-
 
     def update_halos(self, x):
         ensemble_rank = self.ensemble.ensemble_rank
