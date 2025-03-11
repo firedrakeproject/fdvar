@@ -3,6 +3,7 @@ from firedrake import PETSc
 from pyadjoint.optimization.tao_solver import (
     OptionsManager, TAOConvergenceError, _tao_reasons)
 from functools import cached_property
+from fdvar.mat import ReducedFunctionalMat
 
 __all__ = ("TAOObjective", "TAOConvergenceError", "TAOSolver")
 
@@ -51,14 +52,16 @@ class TAOObjective:
 
     @cached_property
     def hessian_mat(self):
-        ctx = HessianCtx(self.Jhat, dual_options=self.dual_options)
-        mat = PETSc.Mat().createPython(
-            (self.sizes, self.sizes), ctx,
-            comm=self.Jhat.ensemble.global_comm)
-        mat.setOption(PETSc.Mat.Option.SYMMETRIC, True)
-        mat.setUp()
-        mat.assemble()
-        return mat
+        return ReducedFunctionalMat(self.Jhat, options=self.dual_options)
+        # ctx = HessianCtx(self.Jhat, dual_options=self.dual_options)
+        # mat = PETSc.Mat().createPython(
+        #     (self.sizes, self.sizes), ctx,
+        #     comm=self.Jhat.ensemble.global_comm)
+        # mat.setOption(PETSc.Mat.Option.SYMMETRIC, True)
+        # mat.setUp()
+        # mat.assemble()
+        # return mat
+        pass  # trick folding
 
     @cached_property
     def gradient_norm_mat(self):
@@ -95,8 +98,8 @@ class HessianCtx:
             x.copy(mdvec)
 
         # TODO: Why do we need to reevaluate and derivate?
-        # _ = self.Jhat(self._m)
-        # _ = self.Jhat.derivative(options=self.dual_options)
+        _ = self.Jhat(self._m)
+        _ = self.Jhat.derivative(options=self.dual_options)
         ddJ = self.Jhat.hessian([self._mdot])
 
         with ddJ.vec_ro() as dvec:

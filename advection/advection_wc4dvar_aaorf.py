@@ -7,8 +7,14 @@ from advection_utils import *
 
 
 def make_fdvrf():
+    if ensemble.ensemble_size == 1:
+        nlocal_observations = len(targets)
+    elif ensemble.ensemble_size == 3:
+        nlocal_observations = 2 if ensemble.ensemble_rank == 0 else 1
+    else:
+        raise ValueError("Must use either 1 or 3 ensemble ranks")
     control_space = fd.EnsembleFunctionSpace(
-        [V for _ in range(len(targets))], ensemble)
+        [V for _ in range(nlocal_observations)], ensemble)
     control = fd.EnsembleFunction(control_space)
 
     for x in control.subfunctions:
@@ -28,7 +34,7 @@ def make_fdvrf():
 
     nstep = 0
     # record observation stages
-    with Jhat.recording_stages() as stages:
+    with Jhat.recording_stages(nstep=nstep) as stages:
         # loop over stages
         for stage, ctx in stages:
             # start forward model
@@ -39,7 +45,7 @@ def make_fdvrf():
                 qn1.assign(qn)
                 stepper.solve()
                 qn.assign(qn1)
-                nstep += 1
+                ctx.nstep += 1
 
             # take observation
             obs_err = observation_error(stage.observation_index)
@@ -63,8 +69,14 @@ if __name__ == '__main__':
     print(f"{Jhat(control) = }")
     print(f"{taylor_test(Jhat, control, vals) = }")
 
-    options = {'disp': True, 'ftol': 1e-2}
+    options = {
+        'disp': True,
+        'ftol': 1e-2
+    }
     derivative_options = {'riesz_representation': 'l2'}
 
-    opt = minimize(Jhat, options=options, method="L-BFGS-B",
+    opt = minimize(Jhat, method="L-BFGS-B", options=options,
                    derivative_options=derivative_options)
+    J0 = Jhat(control)
+    Jopt = Jhat(opt)
+    print(f"{J0 = :.3e} | {Jopt = :.3e} | {Jopt/J0 = :.3e}")

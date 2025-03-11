@@ -8,7 +8,7 @@ from pyadjoint.optimization.tao_solver import PETScVecInterface
 from pyadjoint.enlisting import Enlist
 from typing import Optional
 from enum import Enum
-from functools import partial
+from functools import partial, cached_property
 
 
 class ISNest:
@@ -225,8 +225,11 @@ class ReducedFunctionalMatCtx:
                  input_options: Optional[dict] = None,
                  comm: MPI.Comm = PETSc.COMM_WORLD):
         self.Jhat = Jhat
-        self.control_interface = PETScVecInterface(Jhat.controls, comm=comm)
-        self.functional_interface = PETScVecInterface(Jhat.functional, comm=comm)
+        self.control_interface = PETScVecInterface(
+            Jhat.controls, comm=comm)
+        if action in (Adjoint, TLM):
+            self.functional_interface = PETScVecInterface(
+                Jhat.functional, comm=comm)
 
         if action == Hessian:  # control -> control
             self.xinterface = self.control_interface
@@ -261,6 +264,9 @@ class ReducedFunctionalMatCtx:
         ctx.control_interface.from_petsc(x, ctx._m)
         ctx._shift = 0
 
+    def shift(self, A, alpha):
+        self._shift += alpha
+
     def update_tape_values(self, update_adjoint=True):
         _ = self.Jhat(self._m)
         if update_adjoint:
@@ -282,14 +288,14 @@ class ReducedFunctionalMatCtx:
             raise NotImplementedError(
                 f'Cannot apply hessian action if {self.action = }')
         self.update_tape_values(update_adjoint=True)
-        return self.Jhat.hessian(x, options=self.options)
+        return self.Jhat.hessian(x)
 
     def _mult_tlm(self, A, x):
         if self.action != TLM:
             raise NotImplementedError(
                 f'Cannot apply tlm action if {self.action = }')
         self.update_tape_values(update_adjoint=False)
-        return self.Jhat.tlm(x, options=self.options)
+        return self.Jhat.tlm(x)
 
     def _mult_adjoint(self, A, x):
         if self.action != Adjoint:
