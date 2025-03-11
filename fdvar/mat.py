@@ -71,7 +71,7 @@ class ISNest:
         if vecs is None:
             vecs = self.createVecs()
         else:
-            if all(vecs[i].getSizes() != self.getSizes(i) for i in range(len(self))):
+            if not all(vecs[i].getSizes() == self.getSizes(i) for i in range(len(self))):
                 raise ValueError("vec sizes must match is sizes")
         return PETSc.Vec().createNest(vecs, self.ises, self.comm)
 
@@ -161,8 +161,7 @@ def FDVarSaddlePointKSP(fdvrf, solver_parameters, options_prefix=None):
 def FDVarSaddlePointMat(fdvrf):
     ensemble = fdvrf.ensemble
 
-    isnest = saddle_ises(fdvrf)
-    dn_is, dl_is, dx_is = isnest.ises
+    dn_is, dl_is, dx_is = saddle_ises(fdvrf)
 
     # L Mat
     L = AllAtOnceRFMat(fdvrf, action=TLM)
@@ -411,10 +410,10 @@ class EnsembleBlockDiagonalMatCtx(EnsembleMatCtxBase):
                 block.mult(xvec, yvec)
 
 
-def EnsembleBlockDiagonalMat(blocks, row_space, col_space=None):
+def EnsembleBlockDiagonalMat(row_space, blocks, **kwargs):
     return EnsembleMat(
-        EnsembleBlockDiagonalMatCtx(blocks, row_space, col_space),
-        row_space, col_space)
+        EnsembleBlockDiagonalMatCtx(blocks, row_space, **kwargs),
+        row_space, kwargs.get('col_space', None))
 
 
 # L Mat
@@ -473,12 +472,13 @@ class AllAtOnceRFMatCtx(EnsembleMatCtxBase):
     def mult_impl(self, A, x, y):
         self.update_halos(x)
 
-        # propogate from last step
+        # propogate from last step mx <- M*x
         for M, xi, mxi in zip(self.models, self.xprevs, self.mx.subfunctions):
             mxi.assign(M.mult(xi))
 
         # diagonal contribution
-        x -= self.M
+        # x_{i} <- x_{i} - M*x_{i-1}
+        x -= self.mx
 
         y.assign(x.riesz_representation())
 

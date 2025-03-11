@@ -28,7 +28,6 @@ for v0, v1 in zip(vals.subfunctions, values):
 ksp_params = {
     'monitor': None,
     'converged_rate': None,
-    'rtol': 1e-1,
 }
 
 tao_params = {
@@ -43,11 +42,17 @@ tao_params = {
     'tao_type': 'nls',
     'tao_nls': {
         'ksp': ksp_params,
-        'ksp_type': 'cg',
-        'pc_type': 'lmvm',
+        # 'ksp_type': 'cg',
+        # 'pc_type': 'lmvm',
+        'ksp_rtol': 1e-3,
+        'ksp_type': 'gmres',
+        'pc_type': 'python',
+        'pc_python_type': 'fdvar.AllAtOnceJacobiPC',
+        
     },
     'tao_cg': {
         'ksp': ksp_params,
+        'ksp_rtol': 1e-1,
         'type': 'pr',  # fr-pr-prp-hs-dy
     },
 }
