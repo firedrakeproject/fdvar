@@ -214,15 +214,20 @@ class ReducedFunctionalMatCtx:
     """
     PythonMat context to apply action of a pyadjoint.ReducedFunctional.
 
+    Jhat : V -> U
+    TLM : V -> U
+    Adjoint : U* -> V*
+    Hessian : V x U* -> V* | V -> V*
+
     Parameters
     ----------
 
         action : RFAction
     """
+    dual_options = {'riesz_representation': None}
+
     def __init__(self, Jhat: ReducedFunctional,
-                 action: str = Hessian,
-                 options: Optional[dict] = None,
-                 input_options: Optional[dict] = None,
+                 action: str = Hessian, *,
                  comm: MPI.Comm = PETSc.COMM_WORLD):
         self.Jhat = Jhat
         self.control_interface = PETScVecInterface(
@@ -254,8 +259,6 @@ class ReducedFunctionalMatCtx:
 
         self.action = action
         self._m = copy_controls(Jhat.controls)
-        self.input_options = input_options
-        self.options = options
         self._shift = 0
 
     @classmethod
@@ -270,15 +273,11 @@ class ReducedFunctionalMatCtx:
     def update_tape_values(self, update_adjoint=True):
         _ = self.Jhat(self._m)
         if update_adjoint:
-            _ = self.Jhat.derivative(options=self.options)
+            _ = self.Jhat.derivative(options=self.dual_options)
 
     def mult(self, A, x, y):
         self.xinterface.from_petsc(x, self.x)
-        if self.input_options is None:
-            _x = self.x
-        else:
-            _x = convert_types(self.x, self.input_options)
-        out = self.mult_impl(A, _x)
+        out = self.mult_impl(A, self.x)
         self.yinterface.to_petsc(y, out)
         if self._shift != 0:
             y.axpy(self._shift, x)
@@ -288,7 +287,7 @@ class ReducedFunctionalMatCtx:
             raise NotImplementedError(
                 f'Cannot apply hessian action if {self.action = }')
         self.update_tape_values(update_adjoint=True)
-        return self.Jhat.hessian(x)
+        return self.Jhat.hessian(x, options=self.dual_options)
 
     def _mult_tlm(self, A, x):
         if self.action != TLM:
@@ -302,17 +301,12 @@ class ReducedFunctionalMatCtx:
             raise NotImplementedError(
                 f'Cannot apply adjoint action if {self.action = }')
         self.update_tape_values(update_adjoint=False)
-        return self.Jhat.derivative(adj_input=x, options=self.options)
+        return self.Jhat.derivative(adj_input=x, options=self.dual_options)
 
 
-def ReducedFunctionalMat(Jhat, action=Hessian,
-                         options=None, input_options=None,
-                         comm=PETSc.COMM_WORLD):
+def ReducedFunctionalMat(Jhat, action=Hessian, *, comm=PETSc.COMM_WORLD, **kwargs):
     ctx = ReducedFunctionalMatCtx(
-        Jhat, action,
-        options=options,
-        input_options=input_options,
-        comm=comm)
+        Jhat, action, comm=comm, **kwargs)
 
     ncol = ctx.xinterface.n
     Ncol = ctx.xinterface.N

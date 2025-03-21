@@ -52,7 +52,7 @@ class TAOObjective:
 
     @cached_property
     def hessian_mat(self):
-        return ReducedFunctionalMat(self.Jhat, options=self.dual_options)
+        return ReducedFunctionalMat(self.Jhat)
         # ctx = HessianCtx(self.Jhat, dual_options=self.dual_options)
         # mat = PETSc.Mat().createPython(
         #     (self.sizes, self.sizes), ctx,
