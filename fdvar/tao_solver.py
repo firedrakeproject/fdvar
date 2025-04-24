@@ -9,9 +9,9 @@ __all__ = ("TAOObjective", "TAOConvergenceError", "TAOSolver")
 
 
 class TAOObjective:
-    def __init__(self, Jhat, dual_options=None):
+    def __init__(self, Jhat, apply_riesz=False):
         self.Jhat = Jhat
-        self.dual_options = dual_options
+        self.apply_riesz = apply_riesz
         self._control = Jhat.control.copy()
         self._m = Jhat.control.copy()
         self._mdot = Jhat.control.copy()
@@ -26,19 +26,17 @@ class TAOObjective:
         return self.Jhat(self._control)
 
     def gradient(self, tao, x, g):
-        dJ = self.Jhat.derivative(options=self.dual_options)
+        dJ = self.Jhat.derivative()
         with dJ.vec_ro() as dvec:
             dvec.copy(g)
-        # self.objective_gradient(tao, x, g)
 
     def objective_gradient(self, tao, x, g):
         with self._control.vec_wo() as cvec:
             x.copy(cvec)
         J = self.Jhat(self._control)
-        dJ = self.Jhat.derivative(options=self.dual_options)
+        dJ = self.Jhat.derivative()
         with dJ.vec_ro() as dvec:
             dvec.copy(g)
-        # self.gradient(tao, x, g)
         return J
 
     def hessian(self, A, x, y):
@@ -83,12 +81,11 @@ class HessianCtx:
             x.copy(mvec)
         ctx._shift = 0.0
 
-    def __init__(self, Jhat, dual_options=None):
+    def __init__(self, Jhat):
         self.Jhat = Jhat
         self._m = Jhat.control.copy()
         self._mdot = Jhat.control.copy()
         self._shift = 0.0
-        self.dual_options = dual_options
 
     def shift(self, A, alpha):
         self._shift += alpha
@@ -99,7 +96,7 @@ class HessianCtx:
 
         # TODO: Why do we need to reevaluate and derivate?
         _ = self.Jhat(self._m)
-        _ = self.Jhat.derivative(options=self.dual_options)
+        _ = self.Jhat.derivative()
         ddJ = self.Jhat.hessian([self._mdot])
 
         with ddJ.vec_ro() as dvec:
@@ -125,6 +122,9 @@ class GradientNormCtx:
 
         fd.assemble(self.M, tensor=self._ycofunc._full_local_function)
 
+        # ycofunc = self.Jhat.control._ad_convert_riesz(
+        #     self._xfunc, riesz_map=self.Jhat.control.riesz_map)
+
         with self._ycofunc.vec_ro() as yvec:
             yvec.copy(y)
 
@@ -135,9 +135,7 @@ class TAOSolver:
         self.Jhat = Jhat
         self.ensemble = Jhat.ensemble
 
-        dual_options = {'riesz_representation': None}
-
-        self.tao_objective = TAOObjective(Jhat, dual_options)
+        self.tao_objective = TAOObjective(Jhat)
 
         self.tao = PETSc.TAO().create(
             comm=Jhat.ensemble.global_comm)
@@ -170,6 +168,7 @@ class TAOSolver:
         self.options = OptionsManager(
             solver_parameters, options_prefix)
         self.options.set_from_options(self.tao)
+
         self.tao.setUp()
 
     def solve(self):
