@@ -2,15 +2,15 @@
 import firedrake as fd
 from firedrake.petsc import PETSc
 from firedrake.__future__ import interpolate
-from firedrake.adjoint import (continue_annotation, pause_annotation,
-                               get_working_tape, Control, minimize)
+from firedrake.adjoint import (continue_annotation, pause_annotation, Control, minimize)
+from pyadjoint.reduced_functional_numpy import ReducedFunctionalNumPy
 from firedrake.adjoint import FourDVarReducedFunctional
 from burgers_utils import noisy_double_sin, burgers_stepper
 import numpy as np
 from functools import partial
 import argparse
-from sys import exit
 from math import ceil
+from fdvar import TAOSolver
 
 np.set_printoptions(legacy='1.25')
 
@@ -265,22 +265,50 @@ PETSc.Sys.Print("Minimizing 4DVar functional")
 
 ucontrol = Jhat.control.copy()
 
-# minimiser should be given the derivative not the gradient
-derivative_options = {'riesz_representation': 'l2'}
+# # scipy minimise
+# uoptimised = minimize(
+#     ReducedFunctionalNumPy(Jhat),
+#     method="L-BFGS-B",
+#     options = {
+#         'disp': trank == 0,
+#         'maxcor': args.maxcor,
+#         'ftol': args.ftol,
+#         'gtol': args.gtol
+#     })
 
-options = {
-    'disp': trank == 0,
-    'maxcor': args.maxcor,
-    'ftol': args.ftol,
-    'gtol': args.gtol
+# # tao minimise
+tao_params = {
+    'tao_view': ':tao_view.log',
+    'tao': {
+        'monitor': None,
+        'converged_reason': None,
+        'ls_monitor': None,
+        'gatol': 1e-3,
+        'grtol': 1e-3,
+        'gttol': 1e-3,
+    },
+    'tao_type': 'nls',
+    'tao_nls': {
+        'ksp': {
+            'monitor_short': None,
+            'converged_rate': None,
+            'converged_maxits': None,
+            'max_it': 10,
+            'rtol': 1e-1,
+        },
+        'ksp_type': 'gmres',
+        'ksp_pc_side': 'right',
+        'pc_type': 'none',
+    },
+    'tao_cg_type': 'fr',  # fr-pr-prp-hs-dy
 }
-
-uoptimised = minimize(Jhat, options=options, method="L-BFGS-B",
-                       derivative_options=derivative_options)
-
-uopts = uoptimised.subfunctions
+tao = TAOSolver(Jhat, options_prefix="",
+                solver_parameters=tao_params)
+tao.solve()
+uoptimised = Jhat.control.copy()
 
 global_comm.Barrier()
+uopts = uoptimised.subfunctions
 PETSc.Sys.Print(f"Initial functional: {Jhat(ucontrol)}")
 PETSc.Sys.Print(f"Final functional: {Jhat(uoptimised)}")
 global_comm.Barrier()
