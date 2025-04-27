@@ -8,7 +8,7 @@ from pyadjoint.optimization.tao_solver import PETScVecInterface
 from pyadjoint.enlisting import Enlist
 from typing import Optional
 from enum import Enum
-from functools import partial, cached_property
+from functools import partial, cached_property, wraps
 
 
 class ISNest:
@@ -210,6 +210,18 @@ def FDVarSaddlePointMat(fdvrf):
     return fdvmat
 
 
+def check_rf_action(action):
+    def check_rf_action_decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if self.action != action:
+                raise NotImplementedError(
+                    f'Cannot apply {str(action)} action if {self.action = }')
+            return func(*args, **kwargs)
+        return wrapper
+    return check_rf_action_decorator
+
+
 class ReducedFunctionalMatCtx:
     """
     PythonMat context to apply action of a pyadjoint.ReducedFunctional.
@@ -269,6 +281,7 @@ class ReducedFunctionalMatCtx:
     def update(cls, obj, x, A, P):
         ctx = A.getPythonContext()
         ctx.control_interface.from_petsc(x, ctx._m)
+        ctx.update_tape_values(update_adjoint=True)
         ctx._shift = 0
 
     def shift(self, A, alpha):
@@ -287,29 +300,20 @@ class ReducedFunctionalMatCtx:
         if self._shift != 0:
             y.axpy(self._shift, x)
 
+    @check_rf_action(action=Hessian)
     def _mult_hessian(self, A, x):
-        if self.action != Hessian:
-            raise NotImplementedError(
-                f'Cannot apply hessian action if {self.action = }')
-
-        self.update_tape_values(update_adjoint=True)
+        # self.update_tape_values(update_adjoint=True)
         return self.Jhat.hessian(
             x, apply_riesz=self.apply_riesz)
 
+    @check_rf_action(TLM)
     def _mult_tlm(self, A, x):
-        if self.action != TLM:
-            raise NotImplementedError(
-                f'Cannot apply tlm action if {self.action = }')
-
-        self.update_tape_values(update_adjoint=False)
+        # self.update_tape_values(update_adjoint=False)
         return self.Jhat.tlm(x)
 
+    @check_rf_action(Adjoint)
     def _mult_adjoint(self, A, x):
-        if self.action != Adjoint:
-            raise NotImplementedError(
-                f'Cannot apply adjoint action if {self.action = }')
-
-        self.update_tape_values(update_adjoint=False)
+        # self.update_tape_values(update_adjoint=False)
         return self.Jhat.derivative(
             adj_input=x, apply_riesz=self.apply_riesz)
 
@@ -354,7 +358,7 @@ def EnsembleMat(ctx, row_space, col_space=None):
 class EnsembleMatCtxBase:
     def __init__(self, row_space, col_space=None):
         if col_space is None:
-            col_space = row_space
+            col_space = row_space.dual()
 
         if not isinstance(row_space, fd.EnsembleFunctionSpace):
             raise ValueError(
@@ -370,7 +374,7 @@ class EnsembleMatCtxBase:
         # so that base classes can implement mult only in
         # terms of Ensemble objects not Vecs.
         self.x = fd.EnsembleFunction(self.row_space)
-        self.y = fd.EnsembleFunction(self.col_space.dual())
+        self.y = fd.EnsembleFunction(self.col_space)
 
     def mult(self, A, x, y):
         with self.x.vec_wo() as xvec:

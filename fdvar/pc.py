@@ -63,7 +63,7 @@ class EnsemblePCBase(PCBase):
 
 
 class EnsembleBlockDiagonalPC(PCBase):
-    prefix = "ensemblejacobi_"
+    prefix = "ebjacobi_"
 
     def initialize(self, pc):
         super().initialize(pc)
@@ -104,8 +104,23 @@ class EnsembleBlockDiagonalPC(PCBase):
             yvec.copy(y)
 
 
-class AllAtOnceJacobiPC(PCBase):
-    prefix = "aaojacobi_"
+class CovarianceMassPC(PCBase):
+    prefix = "covmass_"
+    pass
+
+
+class CovarianceDiffusionPC(PCBase):
+    prefix = "covdiff_"
+    pass
+
+
+class SC4DVarBackgroundPC(PCBase):
+    prefix = "bkg_"
+    pass
+
+
+class WC4DVarLTDLPC(PCBase):
+    prefix = "ltdl_"
 
     def initialize(self, pc):
         self.fdvrf = self.pmat.fdvrf

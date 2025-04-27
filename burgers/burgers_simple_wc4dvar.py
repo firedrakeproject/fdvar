@@ -1,71 +1,72 @@
 from firedrake import *
+from firedrake.adjoint import *
 from firedrake.__future__ import interpolate
-from firedrake.adjoint import continue_annotation, pause_annotation, Control, FourDVarReducedFunctional
 from fdvar import TAOSolver, generate_observation_data
-from math import sqrt
 np.random.seed(42)
 
-nw, dt, nt, nu = 10, 1e-4, 6, 0.05
+# number of observation windows, and steps per window
+nw, nt, dt, nu = 5, 6, 1e-4, 0.05
 
+# Covariance of background, observation, and model noise
 sigma_b = 0.1
 sigma_r = 0.03
 sigma_q = 0.0002
 
-# ensemble parallelism
+# time-parallelism using firedrake's Ensemble
 nspatial_ranks = 1
 ensemble = Ensemble(COMM_WORLD, nspatial_ranks)
 ensemble_size = ensemble.ensemble_size
 
-# mesh
+# 1D periodic mesh
 mesh = PeriodicUnitIntervalMesh(
     100, comm=ensemble.comm)
 x, = SpatialCoordinate(mesh)
 
-# finite element forms
+# Burger's equation with implicit midpoint integration
 V = VectorFunctionSpace(mesh, "CG", 2)
 
 un, un1 = Function(V), Function(V)
 v = TestFunction(V)
 uh = (un + un1)/2
 
-F = (inner(un1 - un, v)*dx
-    + dt*inner(dot(uh, nabla_grad(uh)), v)*dx
-    + dt*inner(nu*grad(uh), grad(v))*dx)
+# finite element forms
+F = (inner(un1 - un, v)/dt
+     + inner(dot(uh, grad(uh)), v)
+     + inner(nu*grad(uh), grad(v)))*dx
 
 # timestepper solver
 stepper = NonlinearVariationalSolver(
     NonlinearVariationalProblem(F, un1))
 
-# "ground truth" reference solutions
+# "ground truth" reference solution
 reference_ic = Function(V).project(
     as_vector([1 + 0.5*sin(2*pi*x)]))
 
-# observation mesh and operator
-observation_locations = [
-    [x] for x in np.random.random_sample(20)]
-vom = VertexOnlyMesh(mesh, observation_locations)
+# observations are point evaluations at random locations
+vom = VertexOnlyMesh(mesh, np.random.rand(20, 1))
 Y = VectorFunctionSpace(vom, "DG", 0)
 
-def H(u):
-    return assemble(interpolate(u, Y))
+def H(x):  # operator to take observations
+    return assemble(interpolate(x, Y))
 
-# generate ground-truth observational data
+# generate "ground-truth" observational data
 y, background = generate_observation_data(
     ensemble, reference_ic, stepper, un, un1,
     H, nw, nt, sigma_b, sigma_r, sigma_q)
 
+# create function evaluating observation error at window i
 def observation_error(i):
     return lambda x: Function(Y).assign(H(x) - y[i])
 
-# create Ensemble control
+# create distributed control variable for entire timeseries
 V_ensemble = EnsembleFunctionSpace(
     [V for _ in range(nw//ensemble_size)], ensemble)
 control = EnsembleFunction(V_ensemble)
 
-# start recording
+# tell pyadjoint to start taping operations
 continue_annotation()
 
-# create 4DVar ReducedFunctional
+# This object will construct and solve the 4DVar system
 Jhat = FourDVarReducedFunctional(
     Control(control),
     background=background,
@@ -74,39 +75,40 @@ Jhat = FourDVarReducedFunctional(
     observation_error=observation_error(0),
     weak_constraint=True)
 
+# loop over each observation stage on the local communicator
 with Jhat.recording_stages() as stages:
     for stage, ctx in stages:
+        idx = stage.local_index
         un.assign(stage.control)
         un1.assign(un)
 
+        # let pyadjoint tape the time integration
         for i in range(nt):
             stepper.solve()
             un.assign(un1)
 
-        # record observation at end of each stage
-        idx = stage.local_index
-
+        # tell pyadjoint a) we have finished this stage
+        # and b) how to evaluate this observation error
         stage.set_observation(
             state=un,
             observation_error=observation_error(idx),
             observation_covariance=sigma_r,
             forward_model_covariance=sigma_q)
 
-# finish recording
+# tell pyadjoint to finish taping operations
 pause_annotation()
 
+# Solution strategy is controlled via this options dictionary
 tao_parameters = {
     'tao_monitor': None,
+    'tao_converged_reason': None,
     'tao_gttol': 1e-1,
     'tao_type': 'nls',
     'tao_nls': {
         'ksp_monitor_short': None,
-        'ksp_rtol': 2e-1,
-        'ksp_type': 'gmres',
-        'pc_type': 'none'}
-    # 'tao_type': 'cg',
-    # 'tao_cg_type': 'fr',  # fr-pr-prp-hs-dy
+        'ksp_rtol': 5e-1,
+        'ksp_type': 'gmres'}
 }
-tao = TAOSolver(Jhat, options_prefix="",
+tao = TAOSolver(Jhat, options_prefix="fdv",
                 solver_parameters=tao_parameters)
 tao.solve()

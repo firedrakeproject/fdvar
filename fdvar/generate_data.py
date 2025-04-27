@@ -15,33 +15,39 @@ def generate_observation_data(ensemble, ic, stepper, un, un1, H,
     if seed is not None:
         np.random.seed(seed)
 
-    rank = ensemble.ensemble_rank
+    if ensemble is None:
+        rank = 0
+        nlocal_stages = nw
+    else:
+        rank = ensemble.ensemble_rank
+        nlocal_stages = nw//ensemble.ensemble_size
 
-    nlocal_stages = nw//ensemble.ensemble_size
     if rank == 0:
         nlocal_stages -= 1
 
     # background is reference plus noise
-    background = ic.copy(deepcopy=True)
-    noisify(background, sigma_b)
+    background = noisify(ic.copy(deepcopy=True), sigma_b)
 
     y = []
     # initial observation
     if rank == 0:
         y.append(noisify(H(ic), sigma_r))
 
-    widx = 0
-    with ensemble.sequential(widx=widx, un=un) as ctx:
-        # if rank != 0:
-        #     y.extend([None for _ in range(ctx.widx)])
-        un.assign(ctx.un)
-        un1.assign(un)
+    def solve_local_stages():
         for k in range(nlocal_stages):
             for i in range(nt):
+                un1.assign(un)
                 stepper.solve()
                 un.assign(un1)
             noisify(un, sigma_q)
             y.append(noisify(H(un), sigma_r))
-            ctx.widx += 1
+
+    un.assign(ic)
+    if ensemble is None:
+        solve_local_stages()
+    else:
+        with ensemble.sequential(u=un) as ctx:
+            un.assign(ctx.u)
+            solve_local_stages()
 
     return y, background
