@@ -4,67 +4,45 @@ from firedrake.__future__ import interpolate
 from fdvar import generate_observation_data
 from sys import exit
 np.random.seed(42)
-
-
-class BackgroundPC(PCBase):
-    def initialize(self, pc):
-        A, _ = pc.getOperators()
-        scfdv = A.getPythonContext().problem.reduced_functional
-        B = scfdv.background_norm.covariance
-        Vc = scfdv.controls[0].control.function_space()
-
-        u = Function(Vc)
-        b = Cofunction(Vc.dual())
-        a = inner(TrialFunction(Vc)*(1/B), TestFunction(Vc))*dx
-
-        solver = LinearVariationalSolver(
-            LinearVariationalProblem(
-                a, b, u, constant_jacobian=True),
-            solver_parameters={'ksp_type': 'preonly',
-                               'pc_type': 'lu'})
-
-        self.u, self.b, self.solver = u, b, solver
-
-    def apply(self, pc, x, y):
-        with self.b.dat.vec_wo as vb:
-            x.copy(vb)
-        self.solver.solve()
-        with self.u.dat.vec_ro as vu:
-            vu.copy(y)
-
-    def update(self, pc, x):
-        pass
-
-    def applyTranspose(self, pc, x, y):
-        raise NotImplementedError
+Print = PETSc.Sys.Print
 
 # number of observation windows, and steps per window
-nx, nw, nt, dt, nu = 30, 15, 5, 5e-4, 0.25
+nx, nw, nt, dt, nu = 100, 50, 6, 1e-4, 0.25
 
-T = 0.03
-nsw = 50
+# T = 0.03
+# nsw = 50
+# qscale = T/nsw
+qscale = nt*dt
 
 # Covariance of background, observation, and model noise
 sigma_b = 1e-2
 sigma_r = 1e-3
-sigma_q = (1e-4)*T/nsw
+sigma_q = (1e-4)*qscale
 
-B = sigma_b
-R = sigma_r
-Q = sigma_q
+# lengthscales of the background and model covariances
+L_b = 0.25
+L_q = 0.05
+
+cfl_b = (L_b*L_b/2)*(nx*nx)
+Print(f"{cfl_b = }")
 
 # 1D periodic mesh
 mesh = UnitIntervalMesh(nx)
 x, = SpatialCoordinate(mesh)
 
 # Burger's equation with implicit midpoint integration
-V = VectorFunctionSpace(mesh, "CG", 1)
-V0 = FunctionSpace(mesh, "CG", 1)
+degree = 2
+V = VectorFunctionSpace(mesh, "CG", degree)
+V0 = FunctionSpace(mesh, "CG", degree)
 Real = FunctionSpace(mesh, "R", 0)
 
-B = Function(V0).project(sigma_b*(1 - 0.9*cos(2*pi*x)*sin(4*pi*(0.5-x))))
+# vary between (Bmin =< B/sigma_b =< 1)
+# Bmin = 0.1
+# Bprofile = cos(2*pi*x)*sin(4*pi*(0.5-x))
+# Bexpr = ((1 + Bmin) + (1 - Bmin)*Bprofile)/2
+# B = Function(V0).project(sigma_b*Bexpr)
 
-t = Function(Real).assign(0)
+t = Function(Real).assign(0.)
 fdt = Function(Real).assign(dt)
 
 un, un1 = Function(V), Function(V)
@@ -73,9 +51,24 @@ v = TestFunction(V)
 zero = Constant(0)
 bcs = [DirichletBC(V, as_vector([zero]), "on_boundary")]
 
+# B = (sigma_b, L_b, bcs)
+# Q = (sigma_q, L_q, bcs)
+# R = sigma_r
+
+lu_params = {'ksp_type': 'preonly', 'pc_type': 'lu'}
+
+B = CovarianceOperator(
+    V, form_type="diffusion",
+    sigma=sigma_b, L=L_b, bcs=bcs,
+    solver_parameters=lu_params)
+
+# B = CovarianceOperator(
+#     V, form_type="mass", sigma=sigma_b,
+#     bcs=bcs, solver_parameters=lu_params)
+
 params = {
-    'ksp_type': 'gmres',
-    'pc_type': 'ilu',
+    'snes_rtol': 1e-10,
+    **lu_params,
 }
 
 # forcing
@@ -111,16 +104,11 @@ stepper = NonlinearVariationalSolver(
     NonlinearVariationalProblem(F, un1, bcs=bcs),
     solver_parameters=params)
 
-
-def solve_step():
-    un1.assign(un)
-    stepper.solve()
-    un.assign(un1)
-
-
 # "ground truth" reference solution
 reference_ic = Function(V).project(
     as_vector([k*sin(2*pi*x)]))
+for bc in bcs:
+    bc.apply(reference_ic)
 
 # observations are point evaluations at random locations
 observation_locations = [
@@ -132,14 +120,17 @@ Y0 = FunctionSpace(vom, "DG", 0)
 # vary between (sigma_r =< R =< 1)
 Rprofile = sin(6*pi*(x + 0.3))
 Rexpr = ((1 + sigma_r) + (1 - sigma_r)*Rprofile)/2
-R = Function(Y0).interpolate(Rexpr)
+Rfunc = Function(Y0).interpolate(Rexpr)
+R = CovarianceOperator(
+    Y, form_type="mass", sigma=Rfunc,
+    solver_parameters=lu_params)
 
 def H(x):  # operator to take observations
     return assemble(interpolate(x, Y))
 
 # generate "ground-truth" observational data
 y, background = generate_observation_data(
-    None, reference_ic, stepper, un, un1,
+    None, reference_ic, stepper, un, un1, bcs,
     H, nw, nt, sigma_b, sigma_r, sigma_q)
 
 # create function evaluating observation error at window i
@@ -200,15 +191,16 @@ tao_parameters = {
         'ksp_monitor_short': None,
         'ksp_converged_rate': None,
         'ksp_converged_maxits': None,
-        'ksp_max_it': 6,
+        'ksp_max_it': 15,
         'ksp_rtol': 1e-1,
-        'ksp_type': 'gmres',
+        'ksp_type': 'cg',
         'pc_type': 'python',
-        'pc_python_type': f'{__name__}.BackgroundPC',
+        'pc_python_type': f'fdvar.SC4DVarBackgroundPC',
     },
 }
 tao = TAOSolver(MinimizationProblem(Jhat),
-                parameters=tao_parameters)
+                parameters=tao_parameters,
+                options_prefix="sc")
 xopt = tao.solve()
 PETSc.Sys.Print(f"{errornorm(reference_ic, background) = :.3e}")
 PETSc.Sys.Print(f"{errornorm(reference_ic, xopt)       = :.3e}")

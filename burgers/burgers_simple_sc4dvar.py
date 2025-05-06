@@ -5,7 +5,7 @@ from fdvar import generate_observation_data
 np.random.seed(42)
 
 # number of observation windows, and steps per window
-nw, nt, dt, nu = 50, 6, 1e-4, 0.01
+nw, nt, dt, nu = 32, 6, 1e-4, 0.05
 
 # Covariance of background, observation, and model noise
 sigma_b = 0.1
@@ -140,8 +140,6 @@ tao_parameters = {
         'ksp_rtol': 1e-1,
         'ksp_type': 'gmres',
         'pc_type': 'none',
-        # 'pc_type': 'python',
-        # 'pc_python_type': f'{__name__}.CovariancePC',
     },
 }
 tao = TAOSolver(MinimizationProblem(Jhat),

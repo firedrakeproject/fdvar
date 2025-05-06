@@ -1,5 +1,8 @@
 import firedrake as fd
 from fdvar.mat import EnsembleMatCtxBase
+from math import pi, sqrt
+
+__all__ = ("SC4DVarBackgroundPC",)
 
 
 class PCBase:
@@ -115,8 +118,55 @@ class CovarianceDiffusionPC(PCBase):
 
 
 class SC4DVarBackgroundPC(PCBase):
-    prefix = "bkg_"
-    pass
+    prefix = "scbkg_"
+
+    def initialize(self, pc):
+        prefix = pc.getOptionsPrefix() or ""
+        options_prefix = prefix + self.prefix
+        A, _ = pc.getOperators()
+        scfdv = A.getPythonContext().problem.reduced_functional
+
+        self.covariance = scfdv.background_norm.covariance
+        self.x = fd.Cofunction(self.covariance.V.dual())
+        self.y = fd.Function(self.covariance.V)
+
+        # # diffusion coefficient for lengthscale L
+        # nu = 0.5*L*L
+        # # normalisation for diffusion operator
+        # lambda_g = L*sqrt(2*pi)
+        # scale = lambda_g/sigma
+
+        # V = scfdv.controls[0].control.function_space()
+        # sol = fd.Function(V)
+        # b = fd.Cofunction(V.dual())
+        # u = fd.TrialFunction(V)
+        # v = fd.TestFunction(V)
+        # 
+        # Binv = scale*(fd.inner(u, v) - nu*fd.inner(fd.grad(u), fd.grad(v)))*fd.dx
+
+        # solver = fd.LinearVariationalSolver(
+        #     fd.LinearVariationalProblem(
+        #         Binv, b, sol, bcs=bcs,
+        #         constant_jacobian=True),
+        #     options_prefix=options_prefix,
+        #     solver_parameters={'ksp_type': 'preonly',
+        #                        'pc_type': 'lu'})
+
+        # self.sol, self.b, self.solver = sol, b, solver
+
+    def apply(self, pc, x, y):
+        with self.x.dat.vec_wo as vx:
+            x.copy(vx)
+        self.covariance.action(self.x, tensor=self.y)
+        with self.y.dat.vec_ro as vy:
+        # with self.y.riesz_representation().dat.vec_ro as vy:
+            vy.copy(y)
+
+    def update(self, pc):
+        pass
+
+    def applyTranspose(self, pc, x, y):
+        raise NotImplementedError
 
 
 class WC4DVarLTDLPC(PCBase):

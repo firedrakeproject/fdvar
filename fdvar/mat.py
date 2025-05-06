@@ -300,18 +300,18 @@ class ReducedFunctionalMatCtx:
         if self._shift != 0:
             y.axpy(self._shift, x)
 
-    @check_rf_action(action=Hessian)
+    # @check_rf_action(action=Hessian)
     def _mult_hessian(self, A, x):
         # self.update_tape_values(update_adjoint=True)
         return self.Jhat.hessian(
             x, apply_riesz=self.apply_riesz)
 
-    @check_rf_action(TLM)
+    # @check_rf_action(TLM)
     def _mult_tlm(self, A, x):
         # self.update_tape_values(update_adjoint=False)
         return self.Jhat.tlm(x)
 
-    @check_rf_action(Adjoint)
+    # @check_rf_action(Adjoint)
     def _mult_adjoint(self, A, x):
         # self.update_tape_values(update_adjoint=False)
         return self.Jhat.derivative(

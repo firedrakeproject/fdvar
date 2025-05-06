@@ -2,15 +2,18 @@ import firedrake as fd
 import numpy as np
 
 
-def noisify(u, sigma, seed=None):
+def noisify(u, sigma, bcs=None, seed=None):
     if seed is not None:
         np.random.seed(seed)
     for dat in u.dat:
         dat.data[:] += np.random.normal(0, sigma, dat.data.shape)
+    if bcs:
+        for bc in bcs:
+            bc.apply(u)
     return u
 
 
-def generate_observation_data(ensemble, ic, stepper, un, un1, H,
+def generate_observation_data(ensemble, ic, stepper, un, un1, bcs, H,
                               nw, nt, sigma_b, sigma_r, sigma_q, seed=6):
     if seed is not None:
         np.random.seed(seed)
@@ -26,7 +29,10 @@ def generate_observation_data(ensemble, ic, stepper, un, un1, H,
         nlocal_stages -= 1
 
     # background is reference plus noise
-    background = noisify(ic.copy(deepcopy=True), sigma_b)
+    for bc in bcs:
+        bc.apply(ic)
+
+    background = noisify(ic.copy(deepcopy=True), sigma_b, bcs=bcs)
 
     y = []
     # initial observation
@@ -39,7 +45,7 @@ def generate_observation_data(ensemble, ic, stepper, un, un1, H,
                 un1.assign(un)
                 stepper.solve()
                 un.assign(un1)
-            noisify(un, sigma_q)
+            noisify(un, sigma_q, bcs=bcs)
             y.append(noisify(H(un), sigma_r))
 
     un.assign(ic)

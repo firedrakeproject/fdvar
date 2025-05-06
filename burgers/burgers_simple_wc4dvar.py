@@ -5,7 +5,7 @@ from fdvar import TAOSolver, generate_observation_data
 np.random.seed(42)
 
 # number of observation windows, and steps per window
-nw, nt, dt, nu = 5, 6, 1e-4, 0.05
+nw, nt, dt, nu = 32, 6, 1e-4, 0.05
 
 # Covariance of background, observation, and model noise
 sigma_b = 0.1
@@ -102,11 +102,13 @@ pause_annotation()
 tao_parameters = {
     'tao_monitor': None,
     'tao_converged_reason': None,
-    'tao_gttol': 1e-1,
+    'tao_gttol': 1e-2,
     'tao_type': 'nls',
     'tao_nls': {
         'ksp_monitor_short': None,
-        'ksp_rtol': 5e-1,
+        'ksp_converged_maxits': None,
+        'ksp_max_it': 8,
+        'ksp_rtol': 1e-1,
         'ksp_type': 'gmres'}
 }
 tao = TAOSolver(Jhat, options_prefix="fdv",
