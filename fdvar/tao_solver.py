@@ -51,15 +51,6 @@ class TAOObjective:
     @cached_property
     def hessian_mat(self):
         return ReducedFunctionalMat(self.Jhat)
-        # ctx = HessianCtx(self.Jhat, dual_options=self.dual_options)
-        # mat = PETSc.Mat().createPython(
-        #     (self.sizes, self.sizes), ctx,
-        #     comm=self.Jhat.ensemble.global_comm)
-        # mat.setOption(PETSc.Mat.Option.SYMMETRIC, True)
-        # mat.setUp()
-        # mat.assemble()
-        # return mat
-        pass  # trick folding
 
     @cached_property
     def gradient_norm_mat(self):
@@ -71,39 +62,6 @@ class TAOObjective:
         mat.setUp()
         mat.assemble()
         return mat
-
-
-class HessianCtx:
-    @classmethod
-    def update(cls, tao, x, H, P):
-        ctx = H.getPythonContext()
-        with ctx._m.vec_wo() as mvec:
-            x.copy(mvec)
-        ctx._shift = 0.0
-
-    def __init__(self, Jhat):
-        self.Jhat = Jhat
-        self._m = Jhat.control.copy()
-        self._mdot = Jhat.control.copy()
-        self._shift = 0.0
-
-    def shift(self, A, alpha):
-        self._shift += alpha
-
-    def mult(self, A, x, y):
-        with self._mdot.vec_wo() as mdvec:
-            x.copy(mdvec)
-
-        # TODO: Why do we need to reevaluate and derivate?
-        _ = self.Jhat(self._m)
-        _ = self.Jhat.derivative()
-        ddJ = self.Jhat.hessian([self._mdot])
-
-        with ddJ.vec_ro() as dvec:
-            dvec.copy(y)
-
-        if self._shift != 0.0:
-            y.axpy(self._shift, x)
 
 
 class GradientNormCtx:

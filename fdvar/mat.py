@@ -73,7 +73,7 @@ class ReducedFunctionalMatCtx:
             self.xinterface = self.control_interface
             self.yinterface = self.control_interface
 
-            self.x = copy_controls(Jhat.controls)
+            self.x = self.control_interface.new_control_variable()
             self.mult_impl = self._mult_hessian
 
         elif action == Adjoint:  # functional -> control
@@ -87,14 +87,14 @@ class ReducedFunctionalMatCtx:
             self.xinterface = self.control_interface
             self.yinterface = self.functional_interface
 
-            self.x = copy_controls(Jhat.controls)
+            self.x = self.control_interface.new_control_variable()
             self.mult_impl = self._mult_tlm
         else:
             raise ValueError(
                 'Unrecognised {action = }.')
 
         self.action = action
-        self._m = copy_controls(Jhat.controls)
+        self._m = self.control_interface.new_control_variable()
         self._shift = 0
 
     @classmethod
@@ -122,18 +122,18 @@ class ReducedFunctionalMatCtx:
 
     # @check_rf_action(action=Hessian)
     def _mult_hessian(self, A, x):
-        # self.update_tape_values(update_adjoint=True)
+        self.update_tape_values(update_adjoint=True)
         return self.Jhat.hessian(
             x, apply_riesz=self.apply_riesz)
 
     # @check_rf_action(TLM)
     def _mult_tlm(self, A, x):
-        # self.update_tape_values(update_adjoint=False)
+        self.update_tape_values(update_adjoint=False)
         return self.Jhat.tlm(x)
 
     # @check_rf_action(Adjoint)
     def _mult_adjoint(self, A, x):
-        # self.update_tape_values(update_adjoint=False)
+        self.update_tape_values(update_adjoint=False)
         return self.Jhat.derivative(
             adj_input=x, apply_riesz=self.apply_riesz)
 
