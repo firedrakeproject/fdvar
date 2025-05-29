@@ -4,9 +4,9 @@ import numpy as np
 np.random.seed(6)
 Print = PETSc.Sys.Print
 
-nx = 50
-nt = 50
-T = 1.6
+nx = 32
+nt = 20
+T = 0.8
 dt = T/nt
 velocity = 1
 cfl = velocity*dt*nx
@@ -30,30 +30,26 @@ def tendency(q, phi):
             + jump(phi)*jump(un*q)*dS)
 
 # midpoint rule
-q = TrialFunction(V)
 phi = TestFunction(V)
 
-qh = Constant(0.5)*(q + qn)
-eqn = mass(q - qn, phi) + Constant(dt)*tendency(qh, phi)
+qh = Constant(0.5)*(qn1 + qn)
+eqn = mass(qn1 - qn, phi) + Constant(dt)*tendency(qh, phi)
 
-stepper = LinearVariationalSolver(
-    LinearVariationalProblem(
-        lhs(eqn), rhs(eqn), qn1,
-        constant_jacobian=True))
+# stepper = NonlinearVariationalSolver(
+#     NonlinearVariationalProblem(eqn, qn1))
 
-def correlation_norm(x, sigma):
-    w = 1/sigma
-    return assemble(inner(x*w, w*x)*dx)
+def advance():
+    solve(eqn==0, qn1)
 
-ic = Function(V).interpolate(sin(2*pi*x))
-bkg = Function(V).interpolate(sin(2*pi*x))
-target = Function(V).interpolate(sin(2*pi*(x - T)))
+def correlation_norm(sigma, x):
+    return assemble(inner(sigma*x, x*sigma)*dx)
 
-B = 0.01
-R = 0.20
+ic = Function(V).project(sin(2*pi*x))
+bkg = Function(V).project(sin(2*pi*x))
+target = Function(V).project(sin(2*pi*(x - T)))
 
-B2 = Constant(sqrt(B))
-R2 = Constant(sqrt(R))
+B = 1e1
+R = 2e0
 
 ic.dat.data[:] += np.random.normal(
     0, B, ic.dat.data.shape)
@@ -65,15 +61,23 @@ target.dat.data[:] += np.random.normal(
 continue_annotation()
 with set_working_tape() as tape:
     qn.assign(ic)
-    J = correlation_norm(qn - bkg, B2)
+    qn1.assign(qn)
+    J = correlation_norm(B, qn - bkg)
     for i in range(nt):
-        qn1.assign(qn)
-        stepper.solve()
+        # stepper.solve()
+        advance()
         qn.assign(qn1)
-    J += correlation_norm(qn - target, R2)
-Jhat = ReducedFunctional(J, Control(ic), tape=tape)
+    J += correlation_norm(R, qn - target)
+    Jhat = ReducedFunctional(J, Control(ic), tape=tape)
 pause_annotation()
 final = qn.copy(deepcopy=True)
+
+# dq = Function(V).project(cos(2*pi*(x + 1)))
+# assert taylor_test(Jhat, ic, dq) > 1.95
+# taylor = taylor_to_dict(Jhat, ic, dq)
+# from pprint import pprint
+# pprint(taylor)
+# from sys import exit; exit()
 
 class BackgroundPC(PCBase):
     def initialize(self, pc):
@@ -82,7 +86,7 @@ class BackgroundPC(PCBase):
 
         u = TrialFunction(V)
         v = TestFunction(V)
-        M = inner(u*B2, B2*v)*dx
+        M = inner(B*u, v*B)*dx
 
         prefix = pc.getOptionsPrefix() + "bkg_"
 
@@ -122,11 +126,11 @@ tao_params = {
         'ksp_converged_rate': None,
         'ksp_converged_maxits': None,
         'ksp_max_it': 10,
-        'ksp_rtol': 1e-4,
+        'ksp_rtol': 1e-2,
         'ksp_type': 'cg',
         'pc_type': 'none',
-        # 'pc_type': 'python',
-        # 'pc_python_type': f'{__name__}.BackgroundPC',
+        'pc_type': 'python',
+        'pc_python_type': f'{__name__}.BackgroundPC',
     },
 }
 tao = TAOSolver(MinimizationProblem(Jhat),
@@ -135,13 +139,14 @@ tao = TAOSolver(MinimizationProblem(Jhat),
 ic_opt = tao.solve()
 
 qn.assign(ic_opt)
+qn1.assign(qn)
 for i in range(nt):
-    qn1.assign(qn)
-    stepper.solve()
+    # stepper.solve()
+    advance()
     qn.assign(qn1)
 final_opt = qn.copy(deepcopy=True)
 
-PETSc.Sys.Print(f"{errornorm(bkg, ic)           = :.3e}")
-PETSc.Sys.Print(f"{errornorm(bkg, ic_opt)       = :.3e}")
-PETSc.Sys.Print(f"{errornorm(target, final)     = :.3e}")
-PETSc.Sys.Print(f"{errornorm(target, final_opt) = :.3e}")
+Print(f"{errornorm(bkg, ic)           = :.3e}")
+Print(f"{errornorm(bkg, ic_opt)       = :.3e}")
+Print(f"{errornorm(target, final)     = :.3e}")
+Print(f"{errornorm(target, final_opt) = :.3e}")

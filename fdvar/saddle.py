@@ -1,14 +1,27 @@
 import firedrake as fd
-from firedrake.petsc import PETSc
-from firedrake.petsc import OptionsManager
+from firedrake.petsc import PETSc, OptionsManager
+from firedrake.utils import IntType
 from firedrake.adjoint import ReducedFunctional
-from firedrake.adjoint.fourdvar_reduced_functional import CovarianceNormReducedFunctional
+from firedrake.adjoint.fourdvar_reduced_functional import CovarianceNormReducedFunctional, FourDVarReducedFunctional
 from pyop2.mpi import MPI
-from pyadjoint.optimization.tao_solver import PETScVecInterface
+from pyadjoint.optimization.tao_solver import (
+    PETScVecInterface, ReducedFunctionalMat, TLMAction, AdjointAction)
 from pyadjoint.enlisting import Enlist
+from fdvar.options import *
+from fdvar.pc import PCBase
+from fdvar.mat import EnsembleBlockDiagonalMat
+from fdvar.correlations import CorrelationOperatorMat
 from typing import Optional
 from enum import Enum
 from functools import partial, cached_property, wraps
+import numpy as np
+
+__all__ = (
+    "WC4DVarSaddlePointPC",
+    "WC4DVarSaddlePointMat",
+    "WC4DVarSaddlePointKSP",
+    "getSubWC4DVarSaddlePointMat",
+)
 
 
 class ISNest:
@@ -76,116 +89,212 @@ class ISNest:
         return PETSc.Vec().createNest(vecs, self.ises, self.comm)
 
 
-def saddle_ises(fdvrf):
-    ensemble = fdvrf.ensemble
-    rank = ensemble.ensemble_rank
-    global_comm = ensemble.global_comm
+def nest_ises(vecs, comm):
+    # size of local part of each sub block
+    nlocals = [v.local_size for v in vecs]
 
-    Vsol = fdvrf.solution_space
-    Vobs = fdvrf.observation_space
-    Vs = Vsol.local_spaces[0]
-    Vo = Vobs.local_spaces[0]
+    # global offset of local part of SPS
+    global_offset = comm.exscan(sum(nlocals))
+    if comm.rank == 0:  # exscan returns None
+        global_offset = 0
 
-    # ndofs per (dn, dl, dx) block
-    bsol = Vsol.dof_dset.layout_vec.getLocalSize()
-    bobs = Vobs.dof_dset.layout_vec.getLocalSize()
-    nlocal_blocks = Vsol.nlocal_spaces
+    # global offset into local part of each SPS block
+    offsets = [0]
+    for j in range(1, len(vecs)):
+        offsets.append(offsets[j-1] + nlocals[j-1])
 
-    bsize_dn = bsol
-    bsize_dl = bobs
-    bsize_dx = bsol
-    bsize = bsize_dn + bsize_dl + bsize_dx
+    # global indices of DoFs in local part of each SPS block
+    idxs = [offsets[j] + np.arange(nlocals[j], dtype=IntType)
+            for j in range(len(vecs))]
 
-    # number of blocks on previous ranks
-    nprev_blocks = ensemble.ensemble_comm.exscan(nlocal_blocks)
-    if rank == 0:  # exscan returns None
-        nprev_blocks = 0
+    # IS for each SPS block
+    ises = tuple(PETSc.IS().createGeneral(idx, comm=comm)
+                 for idx in idxs)
 
-    # offset to start of global indices of each field in local block j
-    offset = bsize*nprev_blocks
-    offset_dn = lambda j: offset + j*bsize
-    offset_dl = lambda j: offset_dn(j) + bsize_dn
-    offset_dx = lambda j: offset_dl(j) + bsize_dl
-
-    indices_dn = np.concatenate(
-        [offset_dn(j) + np.arange(bsize_dn, dtype=np.int32)
-         for j in range(nlocal_blocks)])
-
-    indices_dl = np.concatenate(
-        [offset_dl(j) + np.arange(bsize_dl, dtype=np.int32)
-         for j in range(nlocal_blocks)])
-
-    indices_dx = np.concatenate(
-        [offset_dx(j) + np.arange(bsize_dx, dtype=np.int32)
-         for j in range(nlocal_blocks)])
-
-    is_dn = PETSc.IS().createGeneral(indices_dn, comm=global_comm)
-    is_dl = PETSc.IS().createGeneral(indices_dl, comm=global_comm)
-    is_dx = PETSc.IS().createGeneral(indices_dx, comm=global_comm)
-
-    return ISNest((is_dn, is_dl, is_dx))
+    return ises
 
 
-def FDVarSaddlePointKSP(fdvrf, solver_parameters, options_prefix=None):
-    saddlemat = FDVarSaddlePointMat(fdvrf)
+def getSubWC4DVarSaddlePointMat(mat, sub=None):
+    """
+    Return a sub matrix of the saddle point MatNest.
+    Options are 'D', 'R', 'L', 'LT', 'H', 'HT',
+    or None to return all sub matrices.
+    """
+    idx = {
+        'D': (0, 0),
+        'R': (1, 1),
+        'L': (0, 2),
+        'LT': (2, 0),
+        'H': (1, 2),
+        'HT': (2, 1),
+    }
+    return (
+        mat.getNestSubMatrix(*idx[sub])
+        if sub is not None else
+        tuple(mat.getNestSubMatrix(*i) for i in idx.values())
+    )
 
-    ksp = PETSc.KSP().create(comm=fdvrf.ensemble.global_comm)
-    ksp.setOperators(saddlemat, saddlemat)
 
-    options = OptionsManager(solver_parameters, options_prefix)
-    options.set_from_options(ksp)
+def WC4DVarSaddlePointKSP(Jhat, solver_parameters=None, options_prefix=None):
+    mat = WC4DVarSaddlePointMat(Jhat)
+    ksp = PETSc.KSP().create(
+        comm=Jhat.ensemble.global_comm)
+    ksp.setOperators(mat, mat)
 
-    return ksp, options
+    attach_options(
+        ksp, parameters=solver_parameters,
+        options_prefix=options_prefix)
+    set_from_options(ksp)
+
+    return ksp
 
 
-# Saddle-point MatNest
-def FDVarSaddlePointMat(fdvrf):
-    ensemble = fdvrf.ensemble
+def WC4DVarSaddlePointMat(Jhat):
+    if not isinstance(Jhat, FourDVarReducedFunctional):
+        raise TypeError(
+            "WC4DVarSaddlePointMat must be constructed from a"
+            f" FourDVarReducedFunctional, not a {type(Jhat).__name__}")
 
-    dn_is, dl_is, dx_is = saddle_ises(fdvrf)
+    ensemble = Jhat.ensemble
+    Wc = Jhat.control_space
+    Wo = Jhat.observation_space
 
-    # L Mat
-    L = AllAtOnceRFMat(fdvrf, action=TLM)
-    Lt = AllAtOnceRFMat(fdvrf, action=Adjoint)
+    vec_dn = Wc.layout_vec.duplicate()
+    vec_dl = Wo.layout_vec.duplicate()
+    vec_dx = Wc.layout_vec.duplicate()
 
-    Lrow = dn_is
-    Lcol = dx_is
+    is_dn, is_dl, is_dx = PETSc.Vec().concatenate(
+        (vec_dn, vec_dl, vec_dx))[1]
 
-    Ltrow = dx_is
-    Ltcol = dn_is
+    # is_dn, is_dl, is_dx = nest_ises(
+    #     vecs=(vec_c, vec_o, vec_c),
+    #     comm=ensemble.global_comm)
 
-    # H Mat
-    H = ObservationEnsembleRFMat(fdvrf, action=TLM)
-    Ht = ObservationEnsembleRFMat(fdvrf, action=Adjoint)
-
-    Hrow = dl_is
-    Hcol = dx_is
-
-    Htrow = dx_is
-    Htcol = dl_is
-
-    # D Mat
-    D = ModelCovarianceEnsembleRFMat(fdvrf)
-
-    Drow = dn_is
-    Dcol = dn_is
-
-    # R Mat
-    R = ObservationCovarianceEnsembleRFMat(fdvrf)
-
-    Rrow = dl_is
-    Rcol = dl_is
-
-    fdvmat = PETSc.Mat().createNest(
-        mats=[D,     L,               # noqa: E127,E202
-                  R, H,               # noqa: E127,E202
-              Lt, Ht  ],              # noqa: E127,E202
-        isrows=[Drow,        Lrow,    # noqa: E127,E202
-                       Rrow, Hrow,    # noqa: E127,E202
-                Ltrow, Htrow      ],  # noqa: E127,E202
-        iscols=[Dcol,        Lcol,    # noqa: E127,E202
-                       Rcol, Hcol,    # noqa: E127,E202
-                Ltcol, Htcol     ],   # noqa: E127,E202
+    Lmat = ReducedFunctionalMat(
+        Jhat.JL, action=TLMAction,
         comm=ensemble.global_comm)
 
-    return fdvmat
+    LTmat = ReducedFunctionalMat(
+        Jhat.JL, action=AdjointAction,
+        comm=ensemble.global_comm)
+
+    Hmat = ReducedFunctionalMat(
+        Jhat.JH, action=TLMAction,
+        comm=ensemble.global_comm)
+
+    HTmat = ReducedFunctionalMat(
+        Jhat.JH, action=AdjointAction,
+        comm=ensemble.global_comm)
+
+    BQmats = [
+        CorrelationOperatorMat(
+            rf.covariance, action='apply')
+        for rf in Jhat.JD.rfs]
+
+    Dmat = EnsembleBlockDiagonalMat(
+        BQmats, col_space=Wc,
+        row_space=Wc.dual())
+
+    Rmats = [
+        CorrelationOperatorMat(
+            rf.covariance, action='apply')
+        for rf in Jhat.JR.rfs]
+
+    Rmat = EnsembleBlockDiagonalMat(
+        Rmats, col_space=Wo,
+        row_space=Wo.dual())
+
+    A22 = PETSc.Mat().createConstantDiagonal(
+        Dmat.sizes, 0,
+        comm=ensemble.global_comm)
+    A22.setUp()
+    A22.assemble()
+    A22.setAttr("Jhat", Jhat)
+
+    saddle_mat = PETSc.Mat().createNest(
+        mats=[[Dmat,  None,  Lmat],     # noqa: E127,E202
+              [None,  Rmat,  Hmat],     # noqa: E127,E202
+              [LTmat, HTmat, A22]],    # noqa: E127,E202
+        isrows=[is_dn, is_dl, is_dx],   # noqa: E127,E202
+        iscols=[is_dn, is_dl, is_dx],   # noqa: E127,E202
+        comm=ensemble.global_comm)
+    saddle_mat.setUp()
+    saddle_mat.assemble()
+
+    return saddle_mat
+
+
+class WC4DVarSaddlePointPC(PCBase):
+    needs_python_pmat = True
+
+    prefix = "wcsaddle_"
+
+    def initialize(self, pc):
+        super().initialize(pc)
+
+        Jhat = self.pmat.rf
+        if not isinstance(Jhat, FourDVarReducedFunctional):
+            raise TypeError(
+                f"{obj_name(self)} expects a FourDVarReducedFunctional not a {obj_name(Jhat)}")
+
+        self.Jhat = Jhat
+        self.ensemble = Jhat.ensemble
+
+        self.saddle_ksp = WC4DVarSaddlePointKSP(
+            Jhat, options_prefix=self.full_prefix)
+        self.saddle_mat, _ = self.saddle_ksp.getOperators()
+
+        self.saddle_ksp.incrementTabLevel(1, parent=pc)
+        self.saddle_ksp.pc.incrementTabLevel(1, parent=pc)
+
+        self.rhs = self._create_vec()
+        self.sol = self._create_vec()
+
+        self.rhs_dn, self.rhs_dl, self.rhs_dx = self.rhs.getNestSubVecs()
+        self.sol_dn, self.sol_dl, self.sol_dx = self.sol.getNestSubVecs()
+
+    def _create_vec(self):
+        Wc = self.Jhat.control_space
+        Wo = self.Jhat.observation_space
+
+        v_dn = Wc.layout_vec.duplicate()
+        v_dl = Wo.layout_vec.duplicate()
+        v_dx = Wc.layout_vec.duplicate()
+
+        v = PETSc.Vec().createNest(
+            vecs=(v_dn, v_dl, v_dx),
+            isets=self.saddle_mat.getNestISs()[0],
+            comm=self.Jhat.ensemble.global_comm)
+
+        return v
+
+    def _build_rhs(self, val=None, vec=None):
+        val = val or self.Jhat.control.data()
+        vec = vec or self.rhs
+
+        v_dn, v_dl, v_dx = vec.getNestSubVecs()
+
+        b = self.Jhat.JL(val)
+        d = self.Jhat.JH(val)
+
+        with b.vec_ro() as bvec:
+            bvec.copy(result=v_dn)
+        #v_dn.scale(-1)
+
+        with d.vec_ro() as dvec:
+            dvec.copy(result=v_dl)
+        #v_dl.scale(-1)
+
+        v_dx.zeroEntries()
+
+        return vec
+
+    def apply(self, pc, x, y):
+
+        self._build_rhs()
+        self.sol.zeroEntries()
+
+        with inserted_options(self.saddle_ksp):
+            self.saddle_ksp.solve(self.rhs, self.sol)
+
+        self.sol_dx.copy(result=y)

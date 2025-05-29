@@ -12,6 +12,99 @@ correlation_types = (
 )
 
 
+class CorrelationOperatorBase:
+    """Correlation weighted norm x^{T}B^{-1}x
+    """
+    def norm(self, x):
+        """Return x^{T}B^{-1}x
+        """
+        raise NotImplementedError
+
+    def apply(self, x)
+        """Return B^{-1}x
+        """
+        raise NotImplementedError
+
+    def solve(self, x):
+        """Return Bx
+        """
+        raise NotImplementedError
+
+
+class ExplicitMassCorrelation:
+    """Correlation operator is the action of a weighted mass matrix
+    x^{T}B^{-1}x = ||x||_{B^{-1}} = ||(M^{-1}Dx)|| with:
+    D = <sigma*u, v*sigma>
+    i.e.
+    B^{-1} = (Minv*D)^{T}M(Minv*D) = D*Minv*D = D*Minv*D
+    B = Dinv*M*Dinv
+    """
+    def __init__(self, V, sigma):
+        self.sigma = sigma
+        self.V = V
+
+        u = TrialFunction(V)
+        v = TestFunction(V)
+
+        x = Function(V)
+        y = Function(V.dual()
+        self.x = x
+        self.y = y
+
+        self.Daction = inner(sigma*x, v*sigma)
+        self.Dsolve = inner(sigma*u, v*sigma)
+
+    def norm(self, x):
+        """Return x^{T}B^{-1}x
+        """
+        self.x.assign(x)
+        D_x = assemble(self.Daction)
+        MinvD_x = Dx.riesz_representation()
+        return assemble(inner(MinvDx, MinvDx)*dx)
+
+    def solve(self, y):
+        """Return By
+        """
+        # D^{-1}y
+        self.y.assign(y)
+        Dinv_y = Function(self.V)
+        solve(self.Dsolve==self.y, Dinv_y)
+
+        # M*D^{-1}y
+        MDinv_y = Dinv_y.riesz_representation()
+
+        # D^{-1}*M*D^{-1}
+        self.y.assign(MDinv_y)
+        DinvMDinv_y = Function(self.V)
+        solve(self.Dsolve==self.y, DinvMDinv_y)
+
+        return DinvMDinv_y
+
+
+class ImplicitMassCorrelation:
+    """Correlation operator is the inverse of a weighted mass matrix
+    x^{T}B^{-1}x = ||x||_{B^{-1}} = ||(D^{-1}Mx)|| with:
+    D = <sigma*u, v*sigma>
+    i.e.
+    B^{-1} = (Dinv*M)^{T}M(Dinv*M) = M*Dinv*M*Dinv*M
+    B = Minv*D*Minv*D*Minv
+    """
+    def __init__(self, V, sigma):
+        pass
+
+
+class ImplicitDiffusionCorrelation:
+    """Correlation operator is the inverse of a weighted mass matrix
+    x^{T}B^{-1}x = ||x||_{B^{-1}} = ||(D^{-1}Mx)|| with:
+    D = sigma^2*(M + kappa*<grad(u), grad(v)>)
+    i.e.
+    B^{-1} = (Dinv*M)^{T}M(Dinv*M) = M*Dinv*M*Dinv*M
+    B = Minv*D*Minv*D*Minv
+    """
+    def __init__(self, V, sigma):
+        pass
+
+
 def diffusion_correlation(V, sigma, L, u=None):
     # number of diffusion steps
     M = 2
@@ -38,7 +131,7 @@ def diffusion_correlation(V, sigma, L, u=None):
 class BackgroundPC(PCBase):
     def initialize(self, pc):
         A, _ = pc.getOperators()
-        appctx = A.getPythonContext().problem.appctx
+        appctx = A.getPythonContext().appctx
 
         V = appctx["control_space"]
         B2 = appctx["Bsqrt"]
@@ -287,9 +380,9 @@ tao_params = {
         },
     },
 }
-tao = TAOSolver(MinimizationProblem(Jhat, appctx=appctx),
+tao = TAOSolver(MinimizationProblem(Jhat),
                 parameters=tao_params,
-                options_prefix="")
+                appctx=appctx, options_prefix="")
 ic_opt = tao.solve()[0]
 
 un.assign(ic_opt)
