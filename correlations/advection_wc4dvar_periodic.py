@@ -34,20 +34,26 @@ parser.add_argument('--obs_freq', type=int, default=5, help='Frequency of observ
 parser.add_argument('--nx_obs', type=int, default=20, help='Number of observations in space..')
 parser.add_argument('--degree', type=int, default=1, help='Degree of CG space.')
 parser.add_argument('--seed', type=int, default=13, help='RNG seed.')
+parser.add_argument('--lits', type=int, default=-1, help='Number of Richardson iterations for L and L^T. Defaults to nw if < 0.')
+parser.add_argument('--pc', type=str, default="schur", choices=("schur", "saddle"), help='Type of preconditioning strategy.')
 parser.add_argument('--reaction', action='store_true', help='Add a nonlinear reaction term. Useful for checking Hessian taylor test.')
 parser.add_argument('--saddle', action='store_true', help='Run saddle point dev section.')
 parser.add_argument('--taylor_test', action='store_true', help='Run Taylor test instead of optimisation.')
 parser.add_argument('--plot_vtk', action='store_true', help='Plot results after optimisation.')
+parser.add_argument('--logdir', type=str, default="logs", help='Directory for log files.')
 parser.add_argument('--show_args', action='store_true', help='Output all the arguments.')
 
-args = parser.parse_known_args()
-args = args[0]
+parsed_args = parser.parse_known_args()
+args = parsed_args[0]
 
 Print = PETSc.Sys.Print
 np.set_printoptions(legacy='1.25', precision=3, linewidth=200)
 if args.show_args:
     Print()
     Print(args)
+    Print()
+    Print("Other command line options:")
+    Print(parsed_args[1])
     Print()
 
 np.random.seed(args.seed)
@@ -134,7 +140,7 @@ if args.reaction:
     F += xi*inner(un1*un1*un1, v)*dx
 
 params = {
-    "snes_view": ":propagator_snes_view.log",
+    "snes_view": f":{args.logdir}/propagator_snes_view.log",
     "snes_type": "newtonls" if args.reaction else "ksponly",
     "ksp_type": "preonly",
     "pc_type": "lu",
@@ -205,7 +211,6 @@ def observation_error(i):
     return lambda x: Function(Y).assign(H(x) - y[i])
 
 # create distributed control variable for entire timeseries
-control = Function(V).assign(background)
 nlocal_stages = nw//ensemble.ensemble_size
 nlocal_spaces = nlocal_stages + (erank == 0)
 # print(f"{erank = } | {len(ground_truth) = } | {nlocal_spaces = }")
@@ -292,18 +297,6 @@ def noisify_efunc(normalise=False, scale=1.0):
         xi.assign(qnoise)
         print(f"{norm(qnoise) = :.3e} | {np.mean(qnoise.dat.data) = :.3e}")
     return xnoise
-
-# Print(f"{Jhat.Jmodel(truth) = }")
-# Print(f"{Jhat.Jobservations(truth) = }")
-# Print(f"{Jhat(truth) = }")
-# Print(f"{Jhat.Jmodel(prior) = }")
-# Print(f"{Jhat.Jobservations(prior) = }")
-# Print(f"{Jhat(prior) = }")
-# Print(f"{Jhat(truth) = }")
-# xorig = noisify_efunc(prior.copy())
-# Print(f"{Jhat.Jmodel(xorig) = }")
-# Print(f"{Jhat.Jobservations(xorig) = }")
-# Print(f"{Jhat(xorig) = }")
 
 if args.taylor_test:
     from pyadjoint.verification import taylor_to_dict
@@ -458,11 +451,12 @@ none_parameters = {
     },
 }
 
-lits = nw+1
-schur_parameters = {
-    'tao_view': ':tao_view.log',
+lits = args.lits if args.lits >= 0 else nw+1
+
+tao_parameters = {
+    'tao_view': f':{args.logdir}/tao_view.log',
     'tao_monitor': None,
-    'tao_max_it': 20,
+    'tao_max_it': 30,
     # 'tao_ls_type': 'unit',
     # 'tao_ls_monitor': None,
     'tao_converged_reason': None,
@@ -471,149 +465,97 @@ schur_parameters = {
     'tao_gatol': 0,
     'tao_type': 'nls',
     'tao_nls': {
-        'ksp_view_eigenvalues': None,
-        #'ksp_monitor_singular_value': None,
-        'ksp_monitor': None,
+        'ksp_view': f':{args.logdir}/ksp_view.log',
+        'ksp_monitor_true_residual': None,
         'ksp_converged_rate': None,
         'ksp_converged_maxits': None,
         'ksp_max_it': 20,
-        'ksp_rtol': 4e-2,
-        'ksp_type': 'cg',
+        'ksp_rtol': 1e-2,
+        'ksp_type': 'preonly',
+    },
+}
+
+schur_parameters = {
+    'pc_type': 'python',
+    'pc_python_type': 'fdvar.WC4DVarSchurPC',
+    'wcschur_l': {
+        'ksp_convergence_test': 'skip',
+        'ksp_converged_maxits': None,
+        'ksp_type': 'richardson',
+        'ksp_max_it': lits,
+    },
+    'wcschur_d': {
+        'ksp_type': 'preonly',
         'pc_type': 'python',
-        'pc_python_type': 'fdvar.WC4DVarSchurPC',
-        'wcschur_l': {
-            'ksp_monitor': ':wcschur_l_ksp_convergence.log',
-            'ksp_convergence_test': 'skip',
-            'ksp_converged_maxits': None,
-            'ksp_type': 'richardson',
-            'ksp_max_it': lits,
-        },
-        'wcschur_lt': {
-            'ksp_monitor': ':wcschur_lt_ksp_convergence.log',
-            'ksp_convergence_test': 'skip',
-            'ksp_converged_maxits': None,
-            'ksp_type': 'richardson',
-            'ksp_max_it': lits,
-        },
-        'wcschur_d': {
-            'ksp_monitor': ':wcschur_d_ksp_convergence.log',
-            'ksp_type': 'preonly',
-            'pc_type': 'python',
-            'pc_python_type': 'fdvar.EnsembleBJacobiPC',
-            'sub_pc_type': 'python',
-            'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
-        },
+        'pc_python_type': 'fdvar.EnsembleBJacobiPC',
+        'sub_ksp_type': 'preonly',
+        'sub_pc_type': 'python',
+        'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
+    },
+    'wcschur': {  # monitors
+        'l_tlm_ksp_view': f':{args.logdir}/wcschur_ltlm_ksp_view.log',
+        'l_adj_ksp_view': f':{args.logdir}/wcschur_ladj_ksp_view.log',
+        'l_tlm_ksp_monitor': f':{args.logdir}/wcschur_ltlm_ksp_convergence.log',
+        'l_adj_ksp_monitor': f':{args.logdir}/wcschur_ladj_ksp_convergence.log',
+        'd_ksp_view': f':{args.logdir}/wschur_d_ksp_view.log',
+        'd_ksp_monitor': f':{args.logdir}/wcschur_d_ksp_convergence.log',
     },
 }
 
 saddle_parameters = {
-    'tao_view': ':tao_view.log',
-    'tao_monitor': None,
-    'tao_max_it': 20,
-    # 'tao_ls_type': 'unit',
-    # 'tao_ls_monitor': None,
-    'tao_converged_reason': None,
-    'tao_gttol': 1e-2,
-    'tao_grtol': 1e-6,
-    'tao_gatol': 0,
-    'tao_type': 'nls',
-    'tao_nls': {
-        'ksp_monitor': None,
-        'ksp_type': 'preonly',
-        'pc_type': 'python',
-        'pc_python_type': 'fdvar.WC4DVarSaddlePointPC',
-        'wcsaddle': {
-            'ksp_view': ':wcsaddle_ksp_view.log',
-            'ksp_view_eigenvalues': ':wcsaddle_eigenvalues.log',
-            'ksp_monitor_singular_value': ':wcsaddle_singular_value.log',
-            'ksp_monitor': None,
-            'ksp_converged_rate': None,
-            'ksp_max_it': 1,
-            'ksp_converged_maxits': None,
-            'ksp_rtol': 1e-4,
-            'ksp_type': 'gmres',
+    'pc_type': 'python',
+    'pc_python_type': 'fdvar.WC4DVarSaddlePointPC',
+    'pc_wcsaddle_rhs_type': 'saddle',
+    'wcsaddle': {
+        'ksp_view': f':{args.logdir}/wcsaddle_ksp_view.log',
+        'ksp_monitor_true_residual': None,
+        'ksp_converged_rate': None,
+        'ksp_max_it': 100,
+        'ksp_min_it': 6,
+        'ksp_converged_maxits': None,
+        'ksp_rtol': 1e-3,
+        'ksp_type': 'gmres',
+        'pc_type': 'fieldsplit',
+        'pc_fieldsplit_type': 'schur',
+        'pc_fieldsplit_schur_fact_type': 'diag', # <diag=Pb,upper=Pt>
+        'pc_fieldsplit_0_fields': '0,1',
+        'pc_fieldsplit_1_fields': '2',
+        'fieldsplit_0': {
+            'ksp_type': 'preonly',
             'pc_type': 'fieldsplit',
-            'pc_fieldsplit_type': 'schur',
-            'pc_fieldsplit_schur_fact_type': 'diag',
-            'pc_fieldsplit_0_fields': '0,1',
-            'pc_fieldsplit_1_fields': '2',
-            'fieldsplit_0': {
-                'ksp_monitor': None,
-                'ksp_converged_reason': None,
-                'ksp_type': 'preonly',
-                'pc_type': 'fieldsplit',
-                'pc_fieldsplit_type': 'additive',
-                'fieldsplit': {
-                    # '0_ksp_monitor': ':wcsaddle_d_ksp_convergence.log',
-                    # '1_ksp_monitor': ':wcsaddle_r_ksp_convergence.log',
-                    'ksp_monitor': None,
-                    'ksp_type': 'preonly',
-                    'pc_type': 'python',
-                    'pc_python_type': 'fdvar.EnsembleBJacobiPC',
-                    'sub_pc_type': 'python',
-                    'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
-                },
-            },
-            'fieldsplit_1': {
-                # 'ksp_monitor': ':wcsaddle_s_ksp_convergence.log',
-                'ksp_monitor': None,
-                'ksp_converged_reason': None,
+            'pc_fieldsplit_type': 'additive',
+            'fieldsplit': {
+                '0_ksp_monitor': f':{args.logdir}/wcsaddle_d_ksp_convergence.log',
+                '1_ksp_monitor': f':{args.logdir}/wcsaddle_r_ksp_convergence.log',
                 'ksp_type': 'preonly',
                 'pc_type': 'python',
-                'pc_python_type': 'fdvar.WC4DVarSchurPC',
-                'wcschur': {
-                    'ltlm_ksp_monitor': ':wcschur_l_ksp_convergence.log',
-                    'ltlm_ksp_converged_reason': None,
-                    'ltlm_ksp_monitor': None,
-                    'ladj_ksp_monitor': ':wcschur_lt_ksp_convergence.log',
-                    'ladj_ksp_converged_reason': None,
-                    'ladj_ksp_monitor': None,
-                    'd_ksp_monitor': ':wcschur_d_ksp_convergence.log',
-                    'd_ksp_converged_reason': None,
-                    'd_ksp_monitor': None,
-                },
-                'wcschur_ltlm': {
-                    'ksp_view': ':wschur_ltlm_ksp_view.log',
-                    'ksp_convergence_test': 'skip',
-                    'ksp_converged_maxits': None,
-                    'ksp_type': 'richardson',
-                    'ksp_max_it': lits,
-                },
-                'wcschur_ladj': {
-                    'ksp_view': ':wschur_ladj_ksp_view.log',
-                    'ksp_convergence_test': 'skip',
-                    'ksp_converged_maxits': None,
-                    'ksp_type': 'richardson',
-                    'ksp_max_it': lits,
-                },
-                'wcschur_d': {
-                    'ksp_view': ':wschur_d_ksp_view.log',
-                    'ksp_type': 'preonly',
-                    'pc_type': 'python',
-                    'pc_python_type': 'fdvar.EnsembleBJacobiPC',
-                    'sub_ksp_type': 'preonly',
-                    'sub_pc_type': 'python',
-                    'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
-                },
+                'pc_python_type': 'fdvar.EnsembleBJacobiPC',
+                'sub_pc_type': 'python',
+                'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
             },
         },
+        'fieldsplit_1_ksp_monitor_true_residual': f':{args.logdir}/wcsaddle_s_ksp_convergence.log',
+        'fieldsplit_1_ksp_type': 'preonly',
+        'fieldsplit_1': schur_parameters
     },
 }
 
-tao_parameters = saddle_parameters
+if args.pc == "schur":
+    tao_parameters["tao_nls"].update(schur_parameters)
+    tao_parameters["tao_nls"]["ksp_type"] = "cg"
+elif args.pc == "saddle":
+    tao_parameters["tao_nls"].update(saddle_parameters)
+    tao_parameters["tao_nls"]["ksp_type"] = "preonly"
+
 tao = TAOSolver(MinimizationProblem(Jhat),
                 parameters=tao_parameters,
                 options_prefix="")
 
-# from pyadjoint.optimization.tao_solver import ReducedFunctionalMat
-# Jhat(truth)
-# tao = TAOSolver(MinimizationProblem(Jhat.Jmodel),
-#                 parameters=tao_parameters,
-#                 options_prefix="",
-#                 Pmat=ReducedFunctionalMat(Jhat))
-
 Print()
-xopt = tao.solve()
+try:
+    xopt = tao.solve()
+except Exception as err:
+    Print("Solver failed...\n")
 
 prior_ic = prior.subfunctions[0]
 prior_end = prior.subfunctions[-1]

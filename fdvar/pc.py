@@ -19,13 +19,15 @@ __all__ = (
 
 
 def get_default_options(default_prefix, custom_suffixes, options=PETSc.Options()):
-    custom_prefixes = (default_prefix + str(suffix) for suffix in custom_suffixes)
+    custom_prefixes = [default_prefix + str(suffix)
+                       for suffix in custom_suffixes]
     default_options = {
         k.removeprefix(default_prefix): v
         for k, v in options.getAll().items()
-        if k.startswith(default_prefix)
-        and not any(k.startswith(prefix) for prefix in custom_prefixes)
+        if (k.startswith(default_prefix)
+        and not any(k.startswith(prefix) for prefix in custom_prefixes))
     }
+    assert not any(k.startswith(str(suf)) for k in default_options.keys() for suf in custom_suffixes)
     return default_options
 
 
@@ -116,9 +118,13 @@ class EnsembleBJacobiPC(EnsemblePCBase):
             raise TypeError(
                 f"PC {pname} needs an EnsembleBlockDiagonalMatCtx pmat, but it is a {matname}")
 
+        # default to behaving like a PC
+        default_options = {'ksp_type': 'preonly'}
+
         default_sub_prefix = self.parent_prefix + "sub_"
         default_sub_options = get_default_options(
             default_sub_prefix, range(self.col_space.nglobal_spaces))
+        default_options.update(default_sub_options)
 
         block_offset = self.ensemble.ensemble_comm.exscan(
             self.col_space.nlocal_spaces) or 0
@@ -130,7 +136,7 @@ class EnsembleBJacobiPC(EnsemblePCBase):
             sub_ksp.setOperators(sub_mat, sub_mat)
 
             sub_options = OptionsManager(
-                parameters=default_sub_options,
+                parameters=default_options,
                 options_prefix=default_sub_prefix + str(block_offset + i))
             sub_options.set_from_options(sub_ksp)
 
@@ -210,19 +216,20 @@ class WC4DVarSchurPC(PCBase):
             'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
         }
 
+        default_l_prefix = self.full_prefix + "l_"
         default_l_options = get_default_options(
-            default_prefix=f"{self.parent_prefix}l",
+            default_prefix=default_l_prefix,
             custom_suffixes=("tlm", "adj"))
         L_params.update(flatten_parameters(default_l_options))
 
         attach_options(
             self.Lksp, parameters=L_params,
-            options_prefix=self.full_prefix+"ltlm")
+            options_prefix=self.full_prefix+"l_tlm")
         set_from_options(self.Lksp)
 
         attach_options(
             self.LTksp, parameters=L_params,
-            options_prefix=self.full_prefix+"ladj")
+            options_prefix=self.full_prefix+"l_adj")
         set_from_options(self.LTksp)
 
         attach_options(

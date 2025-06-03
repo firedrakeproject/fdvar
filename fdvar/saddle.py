@@ -205,7 +205,7 @@ def WC4DVarSaddlePointMat(Jhat):
         row_space=Wo.dual())
 
     A22 = PETSc.Mat().createConstantDiagonal(
-        Dmat.sizes, 0,
+        (vec_dx.sizes, vec_dx.sizes), 0.,
         comm=ensemble.global_comm)
     A22.setUp()
     A22.assemble()
@@ -240,6 +240,8 @@ class WC4DVarSaddlePointPC(PCBase):
         self.Jhat = Jhat
         self.ensemble = Jhat.ensemble
 
+        self.rhs_type = "saddle"
+
         self.saddle_ksp = WC4DVarSaddlePointKSP(
             Jhat, options_prefix=self.full_prefix)
         self.saddle_mat, _ = self.saddle_ksp.getOperators()
@@ -268,10 +270,10 @@ class WC4DVarSaddlePointPC(PCBase):
 
         return v
 
-    def _build_rhs(self, val=None, vec=None):
-        val = val or self.Jhat.control.data()
-        vec = vec or self.rhs
+    def _build_rhs(self):
+        vec = self.rhs
 
+        val = self.Jhat.control.data()
         v_dn, v_dl, v_dx = vec.getNestSubVecs()
 
         b = self.Jhat.JL(val)
@@ -279,20 +281,30 @@ class WC4DVarSaddlePointPC(PCBase):
 
         with b.vec_ro() as bvec:
             bvec.copy(result=v_dn)
-        #v_dn.scale(-1)
 
         with d.vec_ro() as dvec:
             dvec.copy(result=v_dl)
-        #v_dl.scale(-1)
 
         v_dx.zeroEntries()
 
         return vec
 
     def apply(self, pc, x, y):
-
-        self._build_rhs()
+        # self._build_rhs()
         self.sol.zeroEntries()
+        self.rhs.zeroEntries()
+
+        if self.rhs_type == "saddle":
+            val = self.Jhat.control.data()
+
+            with self.Jhat.JL(val).vec_ro() as bvec:
+                bvec.copy(result=self.rhs_dn)
+
+            with self.Jhat.JH(val).vec_ro() as dvec:
+                dvec.copy(result=self.rhs_dl)
+
+        elif self.rhs_type == "primal":
+            x.copy(result=self.rhs_dx)
 
         with inserted_options(self.saddle_ksp):
             self.saddle_ksp.solve(self.rhs, self.sol)

@@ -371,8 +371,8 @@ class ImplicitDiffusionCorrelation(ImplicitFormCorrelationBase, DiffusionCorrela
         kappa, lamda, lamda_inv = self._generate_diffusion_parameters(sigma, L, m)
 
         self.L = L
-        self.sigma = sigma
         self.kappa = kappa
+        self.sigma = sigma
         self.lamda = lamda
         self.lamda_inv = lamda_inv
 
