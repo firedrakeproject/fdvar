@@ -21,23 +21,20 @@ parser.add_argument('--theta', type=float, default=0.5, help='Implicit timestepp
 parser.add_argument('--sigmab_2', type=float, default=1e-2, help='Background variance.')
 parser.add_argument('--sigmar_2', type=float, default=1e-3, help='Observation variance.')
 parser.add_argument('--sigmaq_2', type=float, default=1e-4, help='Model variance (times stage duration).')
-parser.add_argument('--Btype', type=str, default="diffusion", choices=("mass", "diffusion"), help='Type of background correlation operator.')
 parser.add_argument('--Bm', type=int, default=2, help='Number of form applications for Background correlation. Must be even.')
 parser.add_argument('--L_b', type=float, default=0.1, help='Background correlation lengthscale.')
 parser.add_argument('--lim_b', type=float, default=0.99, help='Background weighting range.')
-parser.add_argument('--Qtype', type=str, default="diffusion", choices=("mass", "diffusion"), help='Type of model correlation operator.')
 parser.add_argument('--Qm', type=int, default=2, help='Number of form applications for model correlation. Must be even.')
 parser.add_argument('--L_q', type=float, default=0.02, help='Model correlation lengthscale.')
 parser.add_argument('--lim_q', type=float, default=0.96, help='Model weighting range.')
 parser.add_argument('--nw', type=int, default=10, help='Number of observations stages.')
 parser.add_argument('--obs_freq', type=int, default=5, help='Frequency of observations in time.')
+parser.add_argument('--p_obs_freq', type=int, default=5, help='Number of timesteps per observation in the preconditioner.')
 parser.add_argument('--nx_obs', type=int, default=20, help='Number of observations in space..')
 parser.add_argument('--degree', type=int, default=1, help='Degree of CG space.')
 parser.add_argument('--seed', type=int, default=13, help='RNG seed.')
 parser.add_argument('--lits', type=int, default=-1, help='Number of Richardson iterations for L and L^T. Defaults to nw if < 0.')
 parser.add_argument('--pc', type=str, default="schur", choices=("schur", "saddle"), help='Type of preconditioning strategy.')
-parser.add_argument('--reaction', action='store_true', help='Add a nonlinear reaction term. Useful for checking Hessian taylor test.')
-parser.add_argument('--saddle', action='store_true', help='Run saddle point dev section.')
 parser.add_argument('--taylor_test', action='store_true', help='Run Taylor test instead of optimisation.')
 parser.add_argument('--plot_vtk', action='store_true', help='Plot results after optimisation.')
 parser.add_argument('--logdir', type=str, default="logs", help='Directory for log files.')
@@ -135,30 +132,21 @@ F = (inner((un1 - un)/dtc, v)*dx
      + inner(nuc*grad(uh), grad(v))*dx
      - inner(g, v)*dx(degree=2*args.degree)
 )
-if args.reaction:
-    xi = Constant(0.02)
-    F += xi*inner(un1*un1*un1, v)*dx
 
 params = {
     "snes_view": f":{args.logdir}/propagator_snes_view.log",
-    "snes_type": "newtonls" if args.reaction else "ksponly",
+    "snes_type": "ksponly",
     "ksp_type": "preonly",
     "pc_type": "lu",
 }
-
-# timestepper solver
-# stepper = NonlinearVariationalSolver(
-#     NonlinearVariationalProblem(F, un1),
-#     solver_parameters=params)
 
 bcs = []
 
 def solve_step():
     un1.assign(un)
-    # stepper.solve()
     solve(F==0, un1, bcs=bcs, solver_parameters=params)
     un.assign(un1)
-    t.assign(t + dt)
+    t.assign(t + dtc)
 
 # "ground truth" reference solution
 reference_ic = Function(V).project(umax*sin(2*pi*x))
@@ -174,19 +162,11 @@ def H(x):  # operator to take observations
 
 # Background correlation operator
 seed_b = 2 + erank  # 2nd letter
-if args.Btype == "mass":
-    Bscale = rand_func(V, sigma=sigma_b, lim=args.lim_b, dist="symmetric", seed=seed_b-1)
-    B = ExplicitMassCorrelation(V, Bscale, m=args.Bm, seed=seed_b)
-elif args.Btype == "diffusion":
-    B = ImplicitDiffusionCorrelation(V, sigma_b, args.L_b, m=args.Bm, seed=seed_b)
+B = ImplicitDiffusionCorrelation(V, sigma_b, args.L_b, m=args.Bm, seed=seed_b)
 
 # Model correlation operator
 seed_q = 17 + erank  # 17th letter
-if args.Qtype == "mass":
-    Qscale = rand_func(V, sigma=sigma_q, lim=args.lim_q, dist="symmetric", seed=seed_q-1)
-    Q = ExplicitMassCorrelation(V, Qscale, m=args.Qm, seed=seed_q)
-elif args.Qtype == "diffusion":
-    Q = ImplicitDiffusionCorrelation(V, sigma_q, args.L_q, m=args.Qm, seed=seed_q)
+Q = ImplicitDiffusionCorrelation(V, sigma_q, args.L_q, m=args.Qm, seed=seed_q)
 
 # Observation correlation operator
 seed_r = 18 + erank  # 18th letter
@@ -224,18 +204,20 @@ if erank == 0:
     truth.subfunctions[0].assign(ground_truth[0])
     for j in range(1, nlocal_stages+1):
         jg = j*nt
-        # print(f"{erank = } | {j = } | {jg = }")
         tsub = truth.subfunctions[j]
         tsub.assign(ground_truth[jg])
 else:
     for j in range(nlocal_stages):
         jg = (j+1)*nt
-        # print(f"{erank = } | {j = } | {jg = }")
         tsub = truth.subfunctions[j]
         tsub.assign(ground_truth[jg])
 
 for u in control.subfunctions:
     u.assign(background)
+
+########
+### Now we record the 4DVar system
+########
 
 # tell pyadjoint to start taping operations
 continue_annotation()
@@ -272,197 +254,68 @@ with Jhat.recording_stages(t=t) as stages:
 
 # tell pyadjoint to finish taping operations
 pause_annotation()
+Print(f"{float(t) = :.2e}")
 prior = Jhat.control.control.copy()
 
-def noisify_efunc(normalise=False, scale=1.0):
-    xnoise = EnsembleFunction(W).zero()
-    xns = xnoise.subfunctions
-    # print(f"{float(B.lamda) = :.3e}")
-    # print(f"{float(Q.lamda) = :.3e}")
+########
+### Now we record the preconditioner system
+########
 
-    if erank == 0:
-        bnoise = B.correlated_noise()
-        if normalise:
-            bnoise /= B.sigma
-        bnoise *= scale
-        xns[0].assign(bnoise)
-        print(f"{norm(bnoise) = :.3e} | {np.mean(bnoise.dat.data) = :.3e}")
+# take fewer timesteps between each observation
+pnt = args.p_obs_freq
+dtc.assign(dt*nt/pnt)
 
-    stage_values = xns[1:] if (erank==0) else xns
-    for xi in stage_values:
-        qnoise = Q.correlated_noise()
-        if normalise:
-            qnoise /= Q.sigma
-        qnoise *= scale
-        xi.assign(qnoise)
-        print(f"{norm(qnoise) = :.3e} | {np.mean(qnoise.dat.data) = :.3e}")
-    return xnoise
+pcontrol = control.copy()
+pbackground = background.copy(deepcopy=True)
+continue_annotation()
 
-if args.taylor_test:
-    from pyadjoint.verification import taylor_to_dict
-    from pprint import pprint
-    # h0 = prior
-    h0 = prior.copy() + noisify_efunc(scale=0.01)
-    dh = noisify_efunc()
+# This object will construct and solve the 4DVar system
+JPhat = FourDVarReducedFunctional(
+    Control(pcontrol),
+    background=pbackground,
+    background_covariance=B,
+    observation_covariance=R,
+    observation_error=observation_error(0),
+    weak_constraint=True)
 
-    Print(f"{Jhat.Jmodel(h0) = }")
-    Print(f"{Jhat.Jobservations(h0) = }")
-    Print(f"{Jhat(h0) = }")
+# loop over each observation stage on the local communicator
+t.assign(0.0)
+with JPhat.recording_stages(t=t) as stages:
+    for stage, ctx in stages:
+        idx = stage.local_index + (erank == 0)
+        un.assign(stage.control)
+        un1.assign(un)
+        t.assign(ctx.t)
 
-    Print("\nTaylor test: Jhat.Jmodel")
-    taylor = taylor_to_dict(Jhat.Jmodel, h0, dh)
-    if COMM_WORLD.rank == 0:
-        pprint(taylor)
+        # let pyadjoint tape the time integration
+        for i in range(pnt):
+            solve_step()
 
-    Print("\nTaylor test: Jhat.Jobservations")
-    taylor = taylor_to_dict(Jhat.Jobservations, h0, dh)
-    if COMM_WORLD.rank == 0:
-        pprint(taylor)
+        # tell pyadjoint a) we have finished this stage
+        # and b) how to evaluate this observation error
+        stage.set_observation(
+            state=un,
+            observation_error=observation_error(idx),
+            observation_covariance=R,
+            forward_model_covariance=Q)
 
-    Print("\nTaylor test: Jhat")
-    taylor = taylor_to_dict(Jhat, h0, dh)
-    if COMM_WORLD.rank == 0:
-        pprint(taylor)
-
-    Print(f"{min(taylor['R0']['Rate']) = :.4e}")
-    Print(f"{min(taylor['R1']['Rate']) = :.4e}")
-    Print(f"{min(taylor['R2']['Rate']) = :.4e}")
-    exit()
-
-if args.saddle:
-    # test setting up saddle point system (SPS)
-    from fdvar.saddle import *
-    rank = COMM_WORLD.rank
-
-    saddle_ksp = WC4DVarSaddlePointKSP(Jhat)
-    saddle_mat, _ = saddle_ksp.getOperators()
-
-    Wc = Jhat.control_space
-    Wo = Jhat.observation_space
-
-    Dmat, Rmat, Lmat, LTmat, Hmat, HTmat = getSubWC4DVarSaddlePointMat(saddle_mat)
-
-    Lksp = PETSc.KSP().create(comm=ensemble.global_comm)
-    Lksp.setOperators(Lmat)
-    Lparams = {
-        'ksp_monitor': None,
-        'ksp_converged_rate': None,
-        'ksp_rtol': 1e-5,
-        'ksp_type': 'richardson',
-        'pc_type': 'none',
-    }
-    attach_options(Lksp, Lparams, options_prefix="L")
-    set_from_options(Lksp)
-
-    x, b = Lmat.createVecs()
-    b.setRandom()
-    # with inserted_options(Lksp):
-    #     Lksp.solve(b, x)
-
-    Dksp = PETSc.KSP().create(comm=ensemble.global_comm)
-    Dksp.setOperators(Dmat)
-    Dparams = {
-        'ksp_monitor': None,
-        'ksp_converged_rate': None,
-        'ksp_rtol': 1e-10,
-        'ksp_type': 'richardson',
-        'pc_type': 'python',
-        'pc_python_type': 'fdvar.EnsembleBJacobiPC',
-        'sub_ksp_monitor': None,
-        'sub_pc_type': 'python',
-        'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
-    }
-    attach_options(Dksp, Dparams, options_prefix="D")
-    set_from_options(Dksp)
-
-    x, b = Dmat.createVecs()
-    b.setRandom()
-    with inserted_options(Dksp):
-        Dksp.solve(b, x)
-
-    exit()
-
-    vec = PETSc.Vec().createNest(
-        vecs=(
-            Wc.layout_vec.duplicate(),
-            Wo.layout_vec.duplicate(),
-            Wc.layout_vec.duplicate()),
-        isets=saddle_mat.getNestISs()[0],
-        comm=ensemble.global_comm)
-
-    x = vec.duplicate()
-    yb = vec.duplicate()
-    yf = vec.duplicate()
-    y0 = vec.duplicate()
-    y1 = vec.duplicate()
-
-    x.setRandom()
-    yb.zeroEntries()
-    yf.zeroEntries()
-    y0.zeroEntries()
-    y1.zeroEntries()
-
-    x_dn, x_dl, x_dx = x.getNestSubVecs()
-    y0_dn, y0_dl, y0_dx = y0.getNestSubVecs()
-    y1_dn, y1_dl, y1_dx = y1.getNestSubVecs()
-
-    # top row
-    Dmat.mult(x_dn, y0_dn)
-    Lmat.mult(x_dx, y1_dn)
-
-    # middle row
-    Rmat.mult(x_dl, y0_dl)
-    Hmat.mult(x_dx, y1_dl)
-
-    # bottom row
-    LTmat.mult(x_dn, y0_dx)
-    HTmat.mult(x_dl, y1_dx)
-
-    # sum contributions
-    yb_dn, yb_dl, yb_dx = yb.getNestSubVecs()
-    yb_dn.waxpy(1, y0_dn, y1_dn)
-    yb_dl.waxpy(1, y0_dl, y1_dl)
-    yb_dx.waxpy(1, y0_dx, y1_dx)
-
-    # full matrix
-    saddle_mat.mult(x, yf)
-
-    assert np.allclose(yf.array, yb.array)
-    Print("WC4DVarSaddlePointMat check passed")
-    exit()
+# tell pyadjoint to finish taping operations
+pause_annotation()
+Print(f"{float(t) = :.2e}")
+dtc.assign(dt)
 
 # Solution strategy is controlled via this options dictionary
-none_parameters = {
-    'tao_view': ':tao_view.log',
-    'tao_monitor': None,
-    'tao_ls_type': 'unit',
-    'tao_converged_reason': None,
-    'tao_gttol': 1e-2,
-    'tao_gatol': 0,
-    'tao_type': 'nls',
-    'tao_nls': {
-        'ksp_monitor': None,
-        'ksp_converged_maxits': None,
-        'ksp_converged_rate': None,
-        'ksp_max_it': 20,
-        'ksp_rtol': 1e-1,
-        'ksp_type': 'cg',
-        'pc_type': 'none',
-    },
-}
-
 lits = args.lits if args.lits >= 0 else nw+1
-
-ksp_monitor = 'ksp_monitor_short'
+ksp_monitor = 'ksp_monitor_true_residual'
 
 tao_parameters = {
     'tao_view': f':{args.logdir}/tao_view.log',
     'tao_monitor': None,
     'tao_max_it': 30,
-    # 'tao_ls_type': 'unit',
+    'tao_ls_type': 'unit',
     # 'tao_ls_monitor': None,
     'tao_converged_reason': None,
-    'tao_gttol': 1e-3,
+    'tao_gttol': 1e-1,
     'tao_grtol': 1e-6,
     'tao_gatol': 0,
     'tao_type': 'nls',
@@ -472,7 +325,7 @@ tao_parameters = {
         'ksp_converged_rate': None,
         'ksp_converged_maxits': None,
         'ksp_max_it': 20,
-        'ksp_rtol': 1e-1,
+        'ksp_rtol': 1e-3,
         'ksp_type': 'preonly',
     },
 }
@@ -514,8 +367,8 @@ saddle_parameters = {
         'ksp_converged_rate': None,
         'ksp_converged_maxits': None,
         'ksp_max_it': 100,
-        'ksp_min_it': 6,
-        'ksp_rtol': 1e-3,
+        'ksp_min_it': 4,
+        'ksp_rtol': 1e-2,
         'ksp_type': 'gmres',
         'pc_type': 'fieldsplit',
         'pc_fieldsplit_type': 'schur',
@@ -549,21 +402,21 @@ elif args.pc == "saddle":
     tao_parameters["tao_nls"].update(saddle_parameters)
     tao_parameters["tao_nls"]["ksp_type"] = "preonly"
 
+from pyadjoint.optimization.tao_solver import ReducedFunctionalMat, HessianAction
+#JPhat = Jhat
+Pmat = ReducedFunctionalMat(
+    JPhat, action=HessianAction,
+    comm=ensemble.global_comm)
+JPhat(prior)
+JPhat.derivative(apply_riesz=False)
+
 tao = TAOSolver(MinimizationProblem(Jhat),
                 parameters=tao_parameters,
-                options_prefix="")
+                options_prefix="", Pmat=Pmat,
+                comm=ensemble.global_comm)
 
 Print()
 xopt = tao.solve()
-# try:
-#     xopt = tao.solve()
-#     success = True
-# except Exception as err:
-#     success = False
-#     Print(f"Solver failed on rank {ensemble.global_comm.rank} with the following error:\n   {str(err)}", comm=PETSc.COMM_SELF)
-#
-# if not ensemble.global_comm.allreduce(success):
-#     xopt = prior.copy()
 
 prior_ic = prior.subfunctions[0]
 prior_end = prior.subfunctions[-1]
@@ -594,76 +447,3 @@ Print(f"{errornorm(prior_end, xopts_end)/norm(prior_end) = :.3e}")
 Print(f"{errornorm(truth_end, prior_end)/norm(truth_end) = :.3e}")
 Print(f"{errornorm(truth_end, xopts_end)/norm(truth_end) = :.3e}")
 Print()
-
-exit()
-
-un.assign(reference_ic)
-t.assign(0)
-reference = [un.copy(deepcopy=True)]
-for _ in range(Nt):
-    solve_step()
-    reference.append(un.copy(deepcopy=True))
-Print(f"{len(reference) = }")
-
-un.assign(background)
-t.assign(0)
-priors = [un.copy(deepcopy=True)]
-forcing = [Function(V).interpolate(g)]
-for _ in range(Nt):
-    solve_step()
-    priors.append(un.copy(deepcopy=True))
-    forcing.append(Function(V).interpolate(g))
-Print(f"{len(priors) = }")
-Print(f"{len(forcing) = }")
-
-t.assign(0)
-opts = []
-for i in range(nw):
-    un.assign(xopt.subfunctions[i])
-    for j in range(nt):
-        opts.append(un.copy(deepcopy=True))
-        solve_step()
-opts.append(un.copy(deepcopy=True))
-Print(f"{len(opts) = }")
-Print(f"{len(ground_truth) = }")
-
-prior_ic = priors.subfunctions[0]
-prior_end = priors.subfunctions[-1]
-xopts_ic = xopt.subfunctions[0]
-xopts_end = xopt.subfunctions[-1]
-truth_ic = truth.subfunctions[0]
-truth_end = truth.subfunctions[-1]
-Print(f"{norm(prior_ic) = :.3e} | {norm(prior_end) = :.3e}")
-Print(f"{norm(xopts_ic) = :.3e} | {norm(xopts_end) = :.3e}")
-Print(f"{norm(truth_ic) = :.3e} | {norm(truth_end) = :.3e}")
-Print(f"{errornorm(prior_ic, xopts_ic)/norm(prior_ic) = :.3e}")
-Print(f"{errornorm(truth_ic, prior_ic)/norm(truth_ic) = :.3e}")
-Print(f"{errornorm(truth_ic, xopts_ic)/norm(truth_ic) = :.3e}")
-Print(f"{errornorm(truth_end, ref_end)/norm(truth_end) = :.3e}")
-Print(f"{errornorm(truth_end, bkg_end)/norm(truth_end) = :.3e}")
-Print(f"{errornorm(truth_end, opt_end)/norm(truth_end) = :.3e}")
-Print(f"{Jhat(prior)  = :.3e}")
-Print(f"{Jhat(xopt)   = :.3e}")
-
-if args.plot_vtk:
-    from firedrake.output import VTKFile
-    vtk = VTKFile("outputs/advection_wc4dvar.pvd", comm=ensemble.comm)
-
-    mesh_out = UnitIntervalMesh(args.nx, comm=ensemble.comm)
-    Vout = FunctionSpace(mesh_out, "CG", args.degree)
-    usrc = Function(V)
-    interp = Interpolator(usrc, Vout)
-
-    ug = Function(Vout, name="ground_truth")
-    ur = Function(Vout, name="reference")
-    up = Function(Vout, name="prior")
-    uo = Function(Vout, name="opt")
-    uf = Function(Vout, name="forcing")
-
-    for i, (truth, ref, prior, opt, force) in enumerate(zip(ground_truth, reference,
-                                                            priors, opts, forcing)):
-        for src, dst in zip((truth, ref, prior, opt, force),
-                            (ug, ur, up, uo, uf)):
-            usrc.assign(src)
-            dst.assign(assemble(interp.interpolate()))
-        vtk.write(ug, ur, up, uo, uf, time=float(i*dt))
