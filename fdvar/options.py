@@ -1,4 +1,5 @@
-from firedrake.petsc import PETSc, OptionsManager
+from firedrake.petsc import PETSc
+from petsctools import OptionsManager
 from contextlib import contextmanager
 
 __all__ = (
