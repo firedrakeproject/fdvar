@@ -517,7 +517,7 @@ saddle_parameters = {
         'ksp_type': 'gmres',
         'pc_type': 'fieldsplit',
         'pc_fieldsplit_type': 'schur',
-        'pc_fieldsplit_schur_fact_type': 'diag', # <diag=Pb,upper=Pt>
+        'pc_fieldsplit_schur_fact_type': 'upper', # <diag=Pb,upper=Pt>
         'pc_fieldsplit_0_fields': '0,1',
         'pc_fieldsplit_1_fields': '2',
         'fieldsplit_0': {
@@ -552,10 +552,16 @@ tao = TAOSolver(MinimizationProblem(Jhat),
                 options_prefix="")
 
 Print()
-try:
-    xopt = tao.solve()
-except Exception as err:
-    Print("Solver failed...\n")
+xopt = tao.solve()
+# try:
+#     xopt = tao.solve()
+#     success = True
+# except Exception as err:
+#     success = False
+#     Print(f"Solver failed on rank {ensemble.global_comm.rank} with the following error:\n   {str(err)}", comm=PETSc.COMM_SELF)
+#
+# if not ensemble.global_comm.allreduce(success):
+#     xopt = prior.copy()
 
 prior_ic = prior.subfunctions[0]
 prior_end = prior.subfunctions[-1]
