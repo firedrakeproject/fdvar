@@ -1,6 +1,6 @@
 import firedrake as fd
-from firedrake.petsc import (
-    PETSc, OptionsManager, flatten_parameters)
+from firedrake.petsc import PETSc
+from petsctools import OptionsManager, flatten_parameters
 from firedrake.adjoint import FourDVarReducedFunctional
 from fdvar.mat import (
     EnsembleMatCtxBase,

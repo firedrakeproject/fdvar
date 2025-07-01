@@ -1,5 +1,6 @@
 import firedrake as fd
-from firedrake.petsc import PETSc, OptionsManager
+from firedrake.petsc import PETSc
+from petsctools import OptionsManager
 from firedrake.utils import IntType
 from firedrake.adjoint import ReducedFunctional
 from firedrake.adjoint.fourdvar_reduced_functional import CovarianceNormReducedFunctional, FourDVarReducedFunctional
