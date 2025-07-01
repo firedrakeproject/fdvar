@@ -138,11 +138,12 @@ def getSubWC4DVarSaddlePointMat(mat, sub=None):
     )
 
 
-def WC4DVarSaddlePointKSP(Jhat, solver_parameters=None, options_prefix=None):
-    mat = WC4DVarSaddlePointMat(Jhat)
+def WC4DVarSaddlePointKSP(Jhat, Jphat, solver_parameters=None, options_prefix=None):
+    amat = WC4DVarSaddlePointMat(Jhat)
+    pmat = WC4DVarSaddlePointMat(Jphat)
     ksp = PETSc.KSP().create(
         comm=Jhat.ensemble.global_comm)
-    ksp.setOperators(mat, mat)
+    ksp.setOperators(amat, pmat)
 
     attach_options(
         ksp, parameters=solver_parameters,
@@ -165,60 +166,6 @@ def WC4DVarSaddlePointMat(Jhat):
     vec_dn = Wc.layout_vec.duplicate()
     vec_dl = Wo.layout_vec.duplicate()
     vec_dx = Wc.layout_vec.duplicate()
-
-    # vnest, (is_dn, is_dl, is_dx) = PETSc.Vec().concatenate(
-    #     (vec_dn, vec_dl, vec_dx))
-
-    # rank = PETSc.COMM_WORLD.rank
-    # PETSc.COMM_WORLD.Barrier()
-    # print(f"{rank=} | {is_dn.sizes = } | {is_dn.indices = }")
-    # print(f"{rank=} | {is_dl.sizes = } | {is_dl.indices = }")
-    # print(f"{rank=} | {is_dx.sizes = } | {is_dx.indices = }")
-    # PETSc.COMM_WORLD.Barrier()
-
-    # PETSc.Sys.Print()
-    # print(f"{rank=} | {vnest.owner_range = }")
-
-    # is_dn = PETSc.IS().createGeneral(
-    #     is_dn.indices, comm=ensemble.global_comm)
-    # is_dl = PETSc.IS().createGeneral(
-    #     is_dl.indices, comm=ensemble.global_comm)
-    # is_dx = PETSc.IS().createGeneral(
-    #     is_dx.indices, comm=ensemble.global_comm)
-
-    # lo, hi = vnest.owner_range
-    # is_dn.setIndices([i for i in is_dn.indices
-    #                   if (lo <= i < hi)])
-
-    # lo, hi = vnest.owner_range
-    # is_dl.setIndices([i for i in is_dl.indices
-    #                   if (lo <= i < hi)])
-
-    # lo, hi = vnest.owner_range
-    # is_dx.setIndices([i for i in is_dx.indices
-    #                   if (lo <= i < hi)])
-
-    # PETSc.COMM_WORLD.Barrier()
-    # PETSc.Sys.Print()
-    # print(f"{rank=} | {vnest.owner_range = }")
-    # print(f"{rank=} | {is_dn.type = }")
-
-    # print(f"{rank=} | {is_dn.sizes = } | {is_dn.indices = }")
-    # print(f"{rank=} | {is_dl.sizes = } | {is_dl.indices = }")
-    # print(f"{rank=} | {is_dx.sizes = } | {is_dx.indices = }")
-    # PETSc.COMM_WORLD.Barrier()
-
-    # is_dn_loc = is_dn.complement(*vnest.owner_range)
-    # is_dl_loc = is_dl.complement(*vnest.owner_range)
-    # is_dx_loc = is_dx.complement(*vnest.owner_range)
-
-    # print(f"{rank=} | {is_dn_loc.sizes = } | {is_dn.indices = }\n")
-    # print(f"{rank=} | {is_dl_loc.sizes = } | {is_dl.indices = }\n")
-    # print(f"{rank=} | {is_dx_loc.sizes = } | {is_dx.indices = }\n")
-
-    # is_dn, is_dl, is_dx = nest_ises(
-    #     vecs=(vec_c, vec_o, vec_c),
-    #     comm=ensemble.global_comm)
 
     Lmat = ReducedFunctionalMat(
         Jhat.JL, action=TLMAction,
@@ -275,6 +222,7 @@ def WC4DVarSaddlePointMat(Jhat):
 
 
 class WC4DVarSaddlePointPC(PCBase):
+    needs_python_amat = True
     needs_python_pmat = True
 
     prefix = "wcsaddle_"
@@ -282,18 +230,24 @@ class WC4DVarSaddlePointPC(PCBase):
     def initialize(self, pc):
         super().initialize(pc)
 
-        Jhat = self.pmat.rf
+        Jhat = self.amat.rf
         if not isinstance(Jhat, FourDVarReducedFunctional):
             raise TypeError(
                 f"{obj_name(self)} expects a FourDVarReducedFunctional not a {obj_name(Jhat)}")
 
+        Jphat = self.pmat.rf
+        if not isinstance(Jphat, FourDVarReducedFunctional):
+            raise TypeError(
+                f"{obj_name(self)} expects a FourDVarReducedFunctional not a {obj_name(Jphat)}")
+
         self.Jhat = Jhat
-        self.ensemble = Jhat.ensemble
+        self.Jphat = Jphat
+        self.ensemble = Jphat.ensemble
 
         self.rhs_type = "saddle"
 
         self.saddle_ksp = WC4DVarSaddlePointKSP(
-            Jhat, options_prefix=self.full_prefix)
+            Jhat, Jphat, options_prefix=self.full_prefix)
         self.saddle_mat, _ = self.saddle_ksp.getOperators()
 
         self.saddle_ksp.incrementTabLevel(1, parent=pc)
@@ -306,8 +260,8 @@ class WC4DVarSaddlePointPC(PCBase):
         self.sol_dn, self.sol_dl, self.sol_dx = self.sol.getNestSubVecs()
 
     def _create_vec(self):
-        Wc = self.Jhat.control_space
-        Wo = self.Jhat.observation_space
+        Wc = self.Jphat.control_space
+        Wo = self.Jphat.observation_space
 
         v_dn = Wc.layout_vec.duplicate()
         v_dl = Wo.layout_vec.duplicate()
@@ -316,7 +270,7 @@ class WC4DVarSaddlePointPC(PCBase):
         v = PETSc.Vec().createNest(
             vecs=(v_dn, v_dl, v_dx),
             isets=self.saddle_mat.getNestISs()[0],
-            comm=self.Jhat.ensemble.global_comm)
+            comm=self.Jphat.ensemble.global_comm)
 
         return v
 
@@ -324,10 +278,11 @@ class WC4DVarSaddlePointPC(PCBase):
         vec = self.rhs
 
         val = self.Jhat.control.data()
+        # val = self.val
         v_dn, v_dl, v_dx = vec.getNestSubVecs()
 
-        b = self.Jhat.JL(val)
-        d = self.Jhat.JH(val)
+        b = self.Jphat.JL(val)
+        d = self.Jphat.JH(val)
 
         with b.vec_ro() as bvec:
             bvec.copy(result=v_dn)
@@ -346,11 +301,12 @@ class WC4DVarSaddlePointPC(PCBase):
 
         if self.rhs_type == "saddle":
             val = self.Jhat.control.data()
+            # val = self.val
 
-            with self.Jhat.JL(val).vec_ro() as bvec:
+            with self.Jphat.JL(val).vec_ro() as bvec:
                 bvec.copy(result=self.rhs_dn)
 
-            with self.Jhat.JH(val).vec_ro() as dvec:
+            with self.Jphat.JH(val).vec_ro() as dvec:
                 dvec.copy(result=self.rhs_dl)
 
         elif self.rhs_type == "primal":
@@ -360,3 +316,8 @@ class WC4DVarSaddlePointPC(PCBase):
             self.saddle_ksp.solve(self.rhs, self.sol)
 
         self.sol_dx.copy(result=y)
+
+    def update(self, pc):
+        val = self.Jhat.control.data()
+        self.Jphat(val)
+        self.Jphat.derivative(apply_riesz=False)

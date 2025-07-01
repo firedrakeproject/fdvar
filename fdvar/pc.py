@@ -169,6 +169,17 @@ class WC4DVarSchurPC(PCBase):
         if not isinstance(Jhat, FourDVarReducedFunctional):
             raise TypeError(
                 f"{obj_name(self)} expects a FourDVarReducedFunctional not a {obj_name(Jhat)}")
+
+        if self.A.getType() == "python":
+            Ahat = self.A.getPythonContext().rf
+        else:
+            Ahat = self.A.getAttr("Jhat")
+
+        if not isinstance(Ahat, FourDVarReducedFunctional):
+            raise TypeError(
+                f"{obj_name(self)} expects a FourDVarReducedFunctional not a {obj_name(Ahat)}")
+
+        self.Ahat = Ahat
         self.Jhat = Jhat
         self.ensemble = Jhat.ensemble
         global_comm = self.ensemble.global_comm
@@ -251,6 +262,10 @@ class WC4DVarSchurPC(PCBase):
         rhs = x.copy()
         sol = y.copy()
 
+        val = self.Ahat.control.data()
+        self.Jhat(val)
+        self.Jhat.derivative(apply_riesz=False)
+
         with inserted_options(self.LTksp):
             self.LTksp.solve(rhs, sol)
 
@@ -267,3 +282,8 @@ class WC4DVarSchurPC(PCBase):
             self.Lksp.solve(rhs, sol)
 
         sol.copy(result=y)
+
+    def update(self, pc):
+        val = self.Ahat.control.data()
+        self.Jhat(val)
+        self.Jhat.derivative(apply_riesz=False)
