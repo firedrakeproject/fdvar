@@ -1,6 +1,8 @@
 import firedrake as fd
 from firedrake.petsc import PETSc
-from petsctools import OptionsManager, flatten_parameters
+from petsctools import (
+    OptionsManager, flatten_parameters,
+    attach_options, set_from_options, inserted_options)
 from firedrake.adjoint import FourDVarReducedFunctional
 from fdvar.mat import (
     EnsembleMatCtxBase,
@@ -8,7 +10,6 @@ from fdvar.mat import (
     EnsembleBlockDiagonalMatCtx)
 from pyadjoint.optimization.tao_solver import (
     ReducedFunctionalMat, TLMAction, AdjointAction)
-from fdvar.options import *
 from fdvar.correlations import CorrelationOperatorMat
 from math import pi, sqrt
 

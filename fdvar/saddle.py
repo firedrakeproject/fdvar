@@ -1,6 +1,9 @@
 import firedrake as fd
 from firedrake.petsc import PETSc
 from petsctools import OptionsManager
+from petsctools import (
+    OptionsManager, inserted_options,
+    attach_options, set_from_options)
 from firedrake.utils import IntType
 from firedrake.adjoint import ReducedFunctional
 from firedrake.adjoint.fourdvar_reduced_functional import CovarianceNormReducedFunctional, FourDVarReducedFunctional
@@ -8,7 +11,6 @@ from pyop2.mpi import MPI
 from pyadjoint.optimization.tao_solver import (
     PETScVecInterface, ReducedFunctionalMat, TLMAction, AdjointAction)
 from pyadjoint.enlisting import Enlist
-from fdvar.options import *
 from fdvar.pc import PCBase
 from fdvar.mat import EnsembleBlockDiagonalMat
 from fdvar.correlations import CorrelationOperatorMat
