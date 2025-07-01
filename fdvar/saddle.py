@@ -164,8 +164,55 @@ def WC4DVarSaddlePointMat(Jhat):
     vec_dl = Wo.layout_vec.duplicate()
     vec_dx = Wc.layout_vec.duplicate()
 
-    is_dn, is_dl, is_dx = PETSc.Vec().concatenate(
-        (vec_dn, vec_dl, vec_dx))[1]
+    # vnest, (is_dn, is_dl, is_dx) = PETSc.Vec().concatenate(
+    #     (vec_dn, vec_dl, vec_dx))
+
+    # rank = PETSc.COMM_WORLD.rank
+    # PETSc.COMM_WORLD.Barrier()
+    # print(f"{rank=} | {is_dn.sizes = } | {is_dn.indices = }")
+    # print(f"{rank=} | {is_dl.sizes = } | {is_dl.indices = }")
+    # print(f"{rank=} | {is_dx.sizes = } | {is_dx.indices = }")
+    # PETSc.COMM_WORLD.Barrier()
+
+    # PETSc.Sys.Print()
+    # print(f"{rank=} | {vnest.owner_range = }")
+
+    # is_dn = PETSc.IS().createGeneral(
+    #     is_dn.indices, comm=ensemble.global_comm)
+    # is_dl = PETSc.IS().createGeneral(
+    #     is_dl.indices, comm=ensemble.global_comm)
+    # is_dx = PETSc.IS().createGeneral(
+    #     is_dx.indices, comm=ensemble.global_comm)
+
+    # lo, hi = vnest.owner_range
+    # is_dn.setIndices([i for i in is_dn.indices
+    #                   if (lo <= i < hi)])
+
+    # lo, hi = vnest.owner_range
+    # is_dl.setIndices([i for i in is_dl.indices
+    #                   if (lo <= i < hi)])
+
+    # lo, hi = vnest.owner_range
+    # is_dx.setIndices([i for i in is_dx.indices
+    #                   if (lo <= i < hi)])
+
+    # PETSc.COMM_WORLD.Barrier()
+    # PETSc.Sys.Print()
+    # print(f"{rank=} | {vnest.owner_range = }")
+    # print(f"{rank=} | {is_dn.type = }")
+
+    # print(f"{rank=} | {is_dn.sizes = } | {is_dn.indices = }")
+    # print(f"{rank=} | {is_dl.sizes = } | {is_dl.indices = }")
+    # print(f"{rank=} | {is_dx.sizes = } | {is_dx.indices = }")
+    # PETSc.COMM_WORLD.Barrier()
+
+    # is_dn_loc = is_dn.complement(*vnest.owner_range)
+    # is_dl_loc = is_dl.complement(*vnest.owner_range)
+    # is_dx_loc = is_dx.complement(*vnest.owner_range)
+
+    # print(f"{rank=} | {is_dn_loc.sizes = } | {is_dn.indices = }\n")
+    # print(f"{rank=} | {is_dl_loc.sizes = } | {is_dl.indices = }\n")
+    # print(f"{rank=} | {is_dx_loc.sizes = } | {is_dx.indices = }\n")
 
     # is_dn, is_dl, is_dx = nest_ises(
     #     vecs=(vec_c, vec_o, vec_c),
@@ -215,9 +262,9 @@ def WC4DVarSaddlePointMat(Jhat):
     saddle_mat = PETSc.Mat().createNest(
         mats=[[Dmat,  None,  Lmat],     # noqa: E127,E202
               [None,  Rmat,  Hmat],     # noqa: E127,E202
-              [LTmat, HTmat, A22]],    # noqa: E127,E202
-        isrows=[is_dn, is_dl, is_dx],   # noqa: E127,E202
-        iscols=[is_dn, is_dl, is_dx],   # noqa: E127,E202
+              [LTmat, HTmat, A22]],     # noqa: E127,E202
+        # isrows=[is_dn, is_dl, is_dx],   # noqa: E127,E202
+        # iscols=[is_dn, is_dl, is_dx],   # noqa: E127,E202
         comm=ensemble.global_comm)
     saddle_mat.setUp()
     saddle_mat.assemble()
