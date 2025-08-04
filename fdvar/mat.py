@@ -1,7 +1,6 @@
 import firedrake as fd
 from firedrake.petsc import PETSc
 from firedrake.adjoint import ReducedFunctional
-from firedrake.adjoint.fourdvar_reduced_functional import CovarianceNormReducedFunctional
 from firedrake.ensemble.ensemble_functionspace import EnsembleFunctionSpaceBase
 from pyop2.mpi import MPI
 from pyadjoint.optimization.tao_solver import PETScVecInterface

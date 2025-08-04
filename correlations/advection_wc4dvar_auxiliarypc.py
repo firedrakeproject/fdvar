@@ -403,7 +403,6 @@ elif args.pc == "saddle":
     tao_parameters["tao_nls"]["ksp_type"] = "preonly"
 
 from pyadjoint.optimization.tao_solver import ReducedFunctionalMat, HessianAction
-#JPhat = Jhat
 Pmat = ReducedFunctionalMat(
     JPhat, action=HessianAction,
     comm=ensemble.global_comm)

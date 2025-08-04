@@ -38,7 +38,6 @@ def generate_observation_data(ensemble, ic, stepper, un, un1, bcs, t, H,
 
     background = ic.copy(deepcopy=True)
     background.assign(background + B.correlated_noise())
-    # Print(f"{fd.errornorm(ic, background)/fd.norm(ic) = :.4e}")
 
     un.assign(ic)
     un1.assign(ic)
@@ -59,12 +58,9 @@ def generate_observation_data(ensemble, ic, stepper, un, un1, bcs, t, H,
                 stepper()
                 ground_truth.append(un.copy(deepcopy=True))
             un.assign(un + Q.correlated_noise())
-            # Print(f"{fd.errornorm(ground_truth[-1], un)/fd.norm(ground_truth[-1]) = :.4e}")
 
             Hx = H(un)
-            yx = Hx.copy(deepcopy=True)
             Hx.assign(Hx + R.correlated_noise())
-            # Print(f"{fd.errornorm(yx, Hx)/fd.norm(yx) = :.4e}")
             y.append(Hx)
 
     un.assign(ic)

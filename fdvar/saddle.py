@@ -6,7 +6,7 @@ from petsctools import (
     attach_options, set_from_options)
 from firedrake.utils import IntType
 from firedrake.adjoint import ReducedFunctional
-from firedrake.adjoint.fourdvar_reduced_functional import CovarianceNormReducedFunctional, FourDVarReducedFunctional
+from firedrake.adjoint.fourdvar_reduced_functional import FourDVarReducedFunctional
 from pyop2.mpi import MPI
 from pyadjoint.optimization.tao_solver import (
     PETScVecInterface, ReducedFunctionalMat, TLMAction, AdjointAction)
