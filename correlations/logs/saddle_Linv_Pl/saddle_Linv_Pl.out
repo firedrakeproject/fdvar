@@ -1,0 +1,67 @@
+
+Namespace(nx=100, dt=0.008, umax=0.3, vel=1.0, vprime=0.3, re=80.0, theta=0.5, sigmab_2=0.01, sigmar_2=0.001, sigmaq_2=0.0001, Btype='diffusion', Bm=4, L_b=0.2, lim_b=0.99, Qtype='diffusion', Qm=2, L_q=0.05, lim_q=0.96, nw=20, obs_freq=5, nx_obs=20, degree=1, seed=13, lits=-1, pc='saddle', reaction=False, saddle=False, taylor_test=False, plot_vtk=True, logdir='logs/saddle_Linv_Pl', show_args=True)
+
+Other command line options:
+['-tao_gttol', '1e-3', '-tao_nls_ksp_rtol', '1e-3', '-tao_nls_wcsaddle_ksp_rtol', '1e-3', '-tao_nls_wcsaddle_pc_fieldsplit_schur_fact_type', 'lower']
+
+nx=100 | nw=20 | Nt=100 | Tend=8.00e-01 | Tob=4.00e-02 | cfl=8.00e-01
+float(kappa)=5.00e-03 | cfl_nu=5.00e+01 | float(lamda)=7.08e-02
+float(kappa)=6.25e-04 | cfl_nu=6.25e+00 | float(lamda)=7.08e-04
+
+norm(background) = 1.814e-01 | norm(reference_ic) = 2.121e-01
+np.mean(bkgdat) = 8.059e-02 | np.mean(icdat) = 8.847e-18
+np.min(bkgdat) = -1.661e-01 | np.max(bkgdat) = 3.259e-01
+
+  0 TAO,  Function value: 246.549,  Residual: 4490.03 
+    Residual norms for tao_nls_ solve.
+    0 KSP none resid norm 3.491466898106e+02 true resid norm 3.491466898106e+02 ||r(i)||/||b|| 1.000000000000e+00
+      Residual norms for tao_nls_wcsaddle_ solve.
+      0 KSP preconditioned resid norm 3.771122672094e+02 true resid norm 2.620840835933e+00 ||r(i)||/||b|| inf
+      1 KSP preconditioned resid norm 1.077213475684e+02 true resid norm 3.006898402271e+00 ||r(i)||/||b|| inf
+      2 KSP preconditioned resid norm 6.183806229047e+01 true resid norm 6.056752279028e+00 ||r(i)||/||b|| inf
+      3 KSP preconditioned resid norm 5.931767236524e+01 true resid norm 6.822435473940e+00 ||r(i)||/||b|| inf
+      4 KSP preconditioned resid norm 5.554113468370e+01 true resid norm 1.001274944409e+01 ||r(i)||/||b|| inf
+      5 KSP preconditioned resid norm 2.386667245443e+01 true resid norm 1.843472837025e+01 ||r(i)||/||b|| inf
+      6 KSP preconditioned resid norm 8.848041430655e+00 true resid norm 4.576536879359e+00 ||r(i)||/||b|| inf
+      7 KSP preconditioned resid norm 3.502178219259e-01 true resid norm 2.703050576992e-01 ||r(i)||/||b|| inf
+    Linear tao_nls_wcsaddle_ solve converged due to CONVERGED_RTOL iterations 7 res rate 0.465163 R^2 0.799897
+    1 KSP none resid norm 1.173610437252e+00 true resid norm 1.173610437252e+00 ||r(i)||/||b|| 3.361367790394e-03
+  1 TAO,  Function value: 22.2345,  Residual: 15.2627 
+    Residual norms for tao_nls_ solve.
+    0 KSP none resid norm 3.491466898106e+02 true resid norm 3.491466898077e+02 ||r(i)||/||b|| 9.999999999919e-01
+      Residual norms for tao_nls_wcsaddle_ solve.
+      0 KSP preconditioned resid norm 7.077871885636e+01 true resid norm 1.491864443375e+00 ||r(i)||/||b|| inf
+      1 KSP preconditioned resid norm 7.805226856572e-01 true resid norm 5.863869872055e-01 ||r(i)||/||b|| inf
+      2 KSP preconditioned resid norm 7.320776708913e-01 true resid norm 5.575750210476e-01 ||r(i)||/||b|| inf
+      3 KSP preconditioned resid norm 6.847786635555e-01 true resid norm 5.091451650092e-01 ||r(i)||/||b|| inf
+      4 KSP preconditioned resid norm 2.488333267569e-01 true resid norm 1.037941546105e-01 ||r(i)||/||b|| inf
+      5 KSP preconditioned resid norm 1.988990460019e-01 true resid norm 8.028181032544e-02 ||r(i)||/||b|| inf
+      6 KSP preconditioned resid norm 2.227424236458e-02 true resid norm 1.673406512444e-02 ||r(i)||/||b|| inf
+    Linear tao_nls_wcsaddle_ solve converged due to CONVERGED_RTOL iterations 6 res rate 0.367813 R^2 0.784102
+    1 KSP none resid norm 7.823097106476e-02 true resid norm 7.823097106476e-02 ||r(i)||/||b|| 2.240633331142e-04
+  2 TAO,  Function value: 22.2342,  Residual: 1.004 
+  TAO solve converged due to CONVERGED_GTTOL iterations 2
+
+Jhat.Jmodel(truth) = 4.0181e+02
+Jhat.Jobservations(truth) = 1.3641e+01
+Jhat(truth) = 4.1545e+02
+
+Jhat.Jmodel(prior) = 0.0000e+00
+Jhat.Jobservations(prior) = 2.4655e+02
+Jhat(prior) = 2.4655e+02
+
+Jhat.Jmodel(xopt) = 7.6496e+00
+Jhat.Jobservations(xopt) = 1.4585e+01
+Jhat(xopt) = 2.2234e+01
+
+norm(truth_ic) = 2.121e-01 | norm(truth_end) = 4.181e-01
+norm(prior_ic) = 1.814e-01 | norm(prior_end) = 3.786e-01
+norm(xopts_ic) = 2.146e-01 | norm(xopts_end) = 4.151e-01
+errornorm(prior_ic, xopts_ic)/norm(prior_ic) = 7.327e-01
+errornorm(truth_ic, prior_ic)/norm(truth_ic) = 6.350e-01
+errornorm(truth_ic, xopts_ic)/norm(truth_ic) = 6.864e-02
+errornorm(prior_end, xopts_end)/norm(prior_end) = 2.854e-01
+errornorm(truth_end, prior_end)/norm(truth_end) = 2.594e-01
+errornorm(truth_end, xopts_end)/norm(truth_end) = 1.335e-02
+
+elapsed time: 17065.10s

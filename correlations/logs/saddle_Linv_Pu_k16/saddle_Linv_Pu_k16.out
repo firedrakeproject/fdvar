@@ -1,0 +1,30 @@
+
+Namespace(nx=100, dt=0.008, umax=0.3, vel=1.0, vprime=0.3, re=80.0, theta=0.5, sigmab_2=0.01, sigmar_2=0.001, sigmaq_2=0.0001, Btype='diffusion', Bm=4, L_b=0.2, lim_b=0.99, Qtype='diffusion', Qm=2, L_q=0.05, lim_q=0.96, nw=20, obs_freq=5, nx_obs=20, degree=1, seed=13, lits=16, pc='saddle', reaction=False, saddle=False, taylor_test=False, plot_vtk=True, logdir='logs/saddle_Linv_Pu_k16', show_args=True)
+
+Other command line options:
+['-tao_gttol', '1e-2', '-tao_nls_ksp_rtol', '1e-3', '-tao_nls_wcsaddle_ksp_rtol', '1e-3', '-tao_nls_wcsaddle_pc_fieldsplit_schur_fact_type', 'upper']
+
+nx=100 | nw=20 | Nt=100 | Tend=8.00e-01 | Tob=4.00e-02 | cfl=8.00e-01
+float(kappa)=5.00e-03 | cfl_nu=5.00e+01 | float(lamda)=7.08e-02
+float(kappa)=6.25e-04 | cfl_nu=6.25e+00 | float(lamda)=7.08e-04
+
+norm(background) = 1.814e-01 | norm(reference_ic) = 2.121e-01
+np.mean(bkgdat) = 8.059e-02 | np.mean(icdat) = 8.847e-18
+np.min(bkgdat) = -1.661e-01 | np.max(bkgdat) = 3.259e-01
+
+  0 TAO,  Function value: 164.449,  Residual: 3431.08 
+    Residual norms for tao_nls_ solve.
+    0 KSP none resid norm 2.835974599787e+02 true resid norm 2.835974599787e+02 ||r(i)||/||b|| 1.000000000000e+00
+      Residual norms for tao_nls_wcsaddle_ solve.
+      0 KSP preconditioned resid norm 1.757919659315e+02 true resid norm 2.573019938274e+00 ||r(i)||/||b|| inf
+      1 KSP preconditioned resid norm 1.757879970459e+02 true resid norm 2.573023336264e+00 ||r(i)||/||b|| inf
+      2 KSP preconditioned resid norm 1.757864757111e+02 true resid norm 2.573031879514e+00 ||r(i)||/||b|| inf
+      3 KSP preconditioned resid norm 1.757421843748e+02 true resid norm 2.576230648793e+00 ||r(i)||/||b|| inf
+      4 KSP preconditioned resid norm 1.757039934376e+02 true resid norm 2.585365472717e+00 ||r(i)||/||b|| inf
+      5 KSP preconditioned resid norm 1.646698030974e+02 true resid norm 3.345239332361e+01 ||r(i)||/||b|| inf
+      6 KSP preconditioned resid norm 1.530670783077e+02 true resid norm 5.947839346261e+01 ||r(i)||/||b|| inf
+      7 KSP preconditioned resid norm 1.299451109589e+02 true resid norm 1.111177164923e+02 ||r(i)||/||b|| inf
+      8 KSP preconditioned resid norm 5.495242055485e+01 true resid norm 2.207717413307e+02 ||r(i)||/||b|| inf
+      9 KSP preconditioned resid norm 3.317720009012e+01 true resid norm 2.418854047591e+02 ||r(i)||/||b|| inf
+     10 KSP preconditioned resid norm 7.765526448578e+00 true resid norm 2.595227826043e+02 ||r(i)||/||b|| inf
+     11 KSP preconditioned resid norm 4.681950991296e+00 true resid norm 2.577525281224e+02 ||r(i)||/||b|| inf

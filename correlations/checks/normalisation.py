@@ -9,14 +9,16 @@ from matplotlib import pyplot as plt
 from sys import exit
 np.random.seed(31)
 
-np.set_printoptions(linewidth=1000, threshold=10000, precision=4, legacy='1.25')
+np.set_printoptions(
+    linewidth=1000, threshold=10000,
+    precision=4, legacy='1.25')
 
-sigma = 0.001
-nsamples = 5000
-n = 64
-m = 4
+nsamples = 2000
+n = 50
 
-L = 0.1
+m = 6
+L = 0.2
+
 Bact = "implicit"
 #Bact = "explicit"
 
@@ -127,32 +129,32 @@ Dsqrt *= sqrt(lamda)
 issymmetric = lambda A: spla.issymmetric(A, rtol=1e-8)
 
 diagMinv = Function(V).project(1/diagM).riesz_representation()
-print(f"{np.mean(diagM.dat.data) = :.3e}")
-print(f"{np.mean(diagMinv.dat.data) = :.3e}")
-print(f"{np.mean(diagMinv.dat.data*dM) = :.3e}")
-print(f"{np.mean(dM) = :.3e}")
-print()
-print(f"{np.mean(diagD.dat.data) = :.3e}")
-print(f"{np.mean(dD) = :.3e}")
-print(f"{np.mean(np.diag(Dfull))   = :.3e}")
-print(f"{np.mean((1/dD)*dM*(1/dD)) = :.3e}")
-#print(f"{np.mean(np.diag(Mh))   = :.3e}")
-#print(f"{np.mean(np.diag(Dh))   = :.3e}")
-#print(f"{np.mean(np.diag(Dinvh))   = :.3e}")
-print(f"{issymmetric(Mmat) = }")
-print(f"{issymmetric(Dmat) = }")
-print(f"{issymmetric(Dinv) = }")
-print(f"{issymmetric(Dfull) = }")
-print()
+# print(f"{np.mean(diagM.dat.data) = :.3e}")
+# print(f"{np.mean(diagMinv.dat.data) = :.3e}")
+# print(f"{np.mean(diagMinv.dat.data*dM) = :.3e}")
+# print(f"{np.mean(dM) = :.3e}")
+# print()
+# print(f"{np.mean(diagD.dat.data) = :.3e}")
+# print(f"{np.mean(dD) = :.3e}")
+# print(f"{np.mean(np.diag(Dfull))   = :.3e}")
+# print(f"{np.mean((1/dD)*dM*(1/dD)) = :.3e}")
+# #print(f"{np.mean(np.diag(Mh))   = :.3e}")
+# #print(f"{np.mean(np.diag(Dh))   = :.3e}")
+# #print(f"{np.mean(np.diag(Dinvh))   = :.3e}")
+# print(f"{issymmetric(Mmat) = }")
+# print(f"{issymmetric(Dmat) = }")
+# print(f"{issymmetric(Dinv) = }")
+# print(f"{issymmetric(Dfull) = }")
+# print()
 
 # print(f"Dmat  =\n{np.diag(Dmat)}")
 # print(f"Dfull =\n{np.diag(Dfull)}")
 
-print(f"{np.mean(np.diag(Mmat))  = :.3e} | {np.std(np.diag(Mmat))  = :.3e}")
-print(f"{np.mean(np.diag(DinvM)) = :.3e} | {np.std(np.diag(DinvM)) = :.3e}")
-print(f"{np.mean(np.diag(Dmat))  = :.3e} | {np.std(np.diag(Dmat))  = :.3e}")
-print(f"{np.mean(np.diag(Dfull)) = :.3e} | {np.std(np.diag(Dfull)) = :.3e}")
-
+# print(f"{np.mean(np.diag(Mmat))  = :.3e} | {np.std(np.diag(Mmat))  = :.3e}")
+# print(f"{np.mean(np.diag(DinvM)) = :.3e} | {np.std(np.diag(DinvM)) = :.3e}")
+# print(f"{np.mean(np.diag(Dmat))  = :.3e} | {np.std(np.diag(Dmat))  = :.3e}")
+# print(f"{np.mean(np.diag(Dfull)) = :.3e} | {np.std(np.diag(Dfull)) = :.3e}")
+# 
 
 #diagD = assemble(Dhat, diagonal=True)
 #print(f"{diagD.dat.data = }")
@@ -169,11 +171,6 @@ wdat = w.dat.data
 ic = Function(V).project(sin(2*pi*x))
 
 generator = Generator(PCG64(seed=31))
-
-def transfer(x, expr):
-    return x.interpolate(expr)
-    return x.project(expr)
-
 Msqrt = Function(V).project(sqrt(diagM))
 
 A = D
@@ -185,7 +182,9 @@ solver = LinearVariationalSolver(
         bcs=bcs, constant_jacobian=True),
     solver_parameters={
         "ksp_type": "preonly",
-        "pc_type": "lu"})
+        "pc_type": "lu"
+    }
+)
 
 Dact = action(De, rhs)
 
