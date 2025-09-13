@@ -6,7 +6,7 @@ from petsctools import (
     attach_options, set_from_options)
 from firedrake.utils import IntType
 from firedrake.adjoint import ReducedFunctional
-from firedrake.adjoint.fourdvar_reduced_functional import CovarianceNormReducedFunctional, FourDVarReducedFunctional
+from firedrake.adjoint.fourdvar_reduced_functional import FourDVarReducedFunctional
 from pyop2.mpi import MPI
 from pyadjoint.optimization.tao_solver import (
     PETScVecInterface, ReducedFunctionalMat, TLMAction, AdjointAction)
@@ -138,17 +138,16 @@ def getSubWC4DVarSaddlePointMat(mat, sub=None):
     )
 
 
-def WC4DVarSaddlePointKSP(Jhat, Jphat, solver_parameters=None, options_prefix=None):
+def WC4DVarSaddlePointKSP(Jhat, Jphat=None, solver_parameters=None, options_prefix=None):
     amat = WC4DVarSaddlePointMat(Jhat)
-    pmat = WC4DVarSaddlePointMat(Jphat)
+    pmat = WC4DVarSaddlePointMat(Jphat or Jhat)
     ksp = PETSc.KSP().create(
         comm=Jhat.ensemble.global_comm)
     ksp.setOperators(amat, pmat)
 
-    attach_options(
+    set_from_options(
         ksp, parameters=solver_parameters,
         options_prefix=options_prefix)
-    set_from_options(ksp)
 
     return ksp
 
@@ -212,8 +211,6 @@ def WC4DVarSaddlePointMat(Jhat):
         mats=[[Dmat,  None,  Lmat],     # noqa: E127,E202
               [None,  Rmat,  Hmat],     # noqa: E127,E202
               [LTmat, HTmat, A22]],     # noqa: E127,E202
-        # isrows=[is_dn, is_dl, is_dx],   # noqa: E127,E202
-        # iscols=[is_dn, is_dl, is_dx],   # noqa: E127,E202
         comm=ensemble.global_comm)
     saddle_mat.setUp()
     saddle_mat.assemble()
@@ -246,8 +243,17 @@ class WC4DVarSaddlePointPC(PCBase):
 
         self.rhs_type = "saddle"
 
+        prefix = pc.getOptionsPrefix() + self.prefix
+        self.use_amat = PETSc.Options().getBool(prefix + "use_amat", False)
+
+        if self.use_amat:
+            Jhat_a = Jhat
+        else:
+            Jhat_a = Jphat
+        Jhat_p = Jphat
+
         self.saddle_ksp = WC4DVarSaddlePointKSP(
-            Jhat, Jphat, options_prefix=self.full_prefix)
+            Jhat_a, Jhat_p, options_prefix=self.full_prefix)
         self.saddle_mat, _ = self.saddle_ksp.getOperators()
 
         self.saddle_ksp.incrementTabLevel(1, parent=pc)
@@ -272,13 +278,14 @@ class WC4DVarSaddlePointPC(PCBase):
             isets=self.saddle_mat.getNestISs()[0],
             comm=self.Jphat.ensemble.global_comm)
 
+        v.setUp()
+
         return v
 
     def _build_rhs(self):
         vec = self.rhs
 
         val = self.Jhat.control.data()
-        # val = self.val
         v_dn, v_dl, v_dx = vec.getNestSubVecs()
 
         b = self.Jphat.JL(val)
@@ -321,3 +328,4 @@ class WC4DVarSaddlePointPC(PCBase):
         val = self.Jhat.control.data()
         self.Jphat(val)
         self.Jphat.derivative(apply_riesz=False)
+        self.val = val

@@ -157,7 +157,6 @@ class ExplicitFormCorrelationBase(FormCorrelationOperatorBase):
         B: V* -> V = l((M^{-1}G)^m)M^{-1}l
         """
         x = x or Function(self.V)
-        primal = Function(self.V)
         primal = Function(self.V).assign(self.riesz(y))
 
         primal.interpolate(self.lamda*primal)
