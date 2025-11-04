@@ -1,5 +1,6 @@
 from firedrake import *
 from firedrake.adjoint import *
+from irksome import Dt, TimeStepper, GaussLegendre
 from fdvar import generate_observation_data
 from fdvar.correlations import *
 import argparse
@@ -67,11 +68,9 @@ Vr = FunctionSpace(mesh, "R", 0)
 
 t = Function(Vr).zero()
 
-un, un1 = Function(V), Function(V)
+un = Function(V)
 v = TestFunction(V)
 one = Constant(1.0)
-half = Constant(0.5)
-uh = half*(un1 + un)
 velocity = Function(V).project(one + Constant(vprime)*cos(2*pi*x))
 
 # finite element forms
@@ -90,23 +89,25 @@ def g(tg):
     )
 
 
-F = (inner((un1 - un)/Constant(dt), v)*dx
-     + inner(velocity, uh.dx(0))*v*dx
-     + inner(nuc*grad(uh), grad(v))*dx
-     - inner(g(t+0.5*dt), v)*dx(degree=4)
+F = (inner(Dt(un), v)*dx
+     + inner(velocity, un.dx(0))*v*dx
+     + inner(nuc*grad(un), grad(v))*dx
+     - inner(g(t), v)*dx(degree=4)
 )
 
-params = {
+solver_parameters = {
     "snes_type": "ksponly",
     "ksp_type": "preonly",
     "pc_type": "lu",
 }
 
-def solve_step():
-    un1.assign(un)
-    t.assign(t + dt)
-    solve(F==0, un1, solver_parameters=params)
-    un.assign(un1)
+tableau = GaussLegendre(1)
+
+stepper = TimeStepper(
+    F, tableau, t, dt, un,
+    solver_parameters=solver_parameters,
+    options_prefix="")
+un = stepper.u0
 
 # "ground truth" reference solution
 reference_ic = Function(V).project(umax*sin(2*pi*x))
@@ -136,10 +137,14 @@ R = ExplicitMassCorrelation(Y, Rscale, seed=18)
 # Observation noise generator
 Rgen = ExplicitMassCorrelation(Y, sigma_r, seed=18-1)
 
+def solve_step():
+    stepper.advance()
+    t.assign(t + dt)
+
 # generate "ground-truth" observational data
 y, background, target_end, ground_truth = generate_observation_data(
     None, reference_ic, solve_step,
-    un, un1, [], t, H, nw, nt, B, Rgen, Q)
+    un, un, [], t, H, nw, nt, B, Rgen, Q)
 
 # create function evaluating observation error at window i
 def observation_error(i):
@@ -165,18 +170,18 @@ t.assign(0.0)
 with Jhat.recording_stages(nstages=nw, t=t) as stages:
     for stage, ctx in stages:
         idx = stage.local_index + 1
-        un.assign(stage.control)
-        un1.assign(un)
+        stepper.u0.assign(stage.control)
         t.assign(ctx.t)
 
         # let pyadjoint tape the time integration
         for i in range(nt):
-            solve_step()
+            stepper.advance()
+            t += dt
 
         # tell pyadjoint a) we have finished this stage
         # and b) how to evaluate this observation error
         stage.set_observation(
-            state=un,
+            state=stepper.u0,
             observation_error=observation_error(idx),
             observation_covariance=R)
 

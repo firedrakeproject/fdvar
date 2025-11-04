@@ -76,15 +76,20 @@ F = (inner((un1 - un)/Constant(dt), v)*dx
      - inner(gscale*g, v)*dx(degree=4)
 )
 
-params = {
+solver_parameters = {
     "snes_type": "ksponly",
     "ksp_type": "preonly",
     "pc_type": "lu",
 }
 
+solver = NonlinearVariationalSolver(
+    NonlinearVariationalProblem(F, un1),
+    solver_parameters=solver_parameters,
+    options_prefix="")
+
 def solve_step():
     un1.assign(un)
-    solve(F==0, un1, solver_parameters=params)
+    solver.solve()
     un.assign(un1)
     t.assign(t + dt)
 
@@ -101,7 +106,10 @@ for _ in range(Nt):
     reference.append(un.copy(deepcopy=True))
     forcing.append(Function(V).interpolate(g))
     source.append(assemble(forcing[-1]*dx))
+    print(f"{float(t) = } | {norm(un) = }")
 print(f"{sum(source) = }")
+
+# from sys import exit; exit()
 
 un.assign(reference_ic)
 t.assign(0)

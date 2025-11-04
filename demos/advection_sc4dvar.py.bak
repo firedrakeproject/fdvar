@@ -5,12 +5,13 @@ from fdvar.correlations import *
 import argparse
 
 parser = argparse.ArgumentParser(
-    description='Strong constraint 4DVar for the Burgers equation.',
+    description='Strong constraint 4DVar for the advection diffusion equation.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
 )
 parser.add_argument('--nx', type=int, default=50, help='Number of elements.')
 parser.add_argument('--dt', type=float, default=1e-2, help='Number of elements.')
-parser.add_argument('--umax', type=float, default=0.3, help='Initial velocity variation.')
+parser.add_argument('--umax', type=float, default=0.3, help='Initial scalar variation.')
+parser.add_argument('--vprime', type=float, default=0.1, help='velocity perturbation.')
 parser.add_argument('--re', type=float, default=50, help='Reynolds number.')
 parser.add_argument('--sigmab_2', type=float, default=1e-2, help='Background variance.')
 parser.add_argument('--sigmar_2', type=float, default=1e-3, help='Observation variance.')
@@ -27,8 +28,7 @@ parser.add_argument('--plot_vtk', action='store_true', help='Plot results after 
 parser.add_argument('--taylor_test', action='store_true', help='Run Taylor test on 4DVar ReducedFunctional.')
 parser.add_argument('--show_args', action='store_true', help='Output all the arguments.')
 
-args = parser.parse_known_args()
-args = args[0]
+args, _ = parser.parse_known_args()
 
 Print = PETSc.Sys.Print
 np.set_printoptions(legacy='1.25', precision=3, linewidth=200)
@@ -42,7 +42,7 @@ np.random.seed(args.seed)
 # number of observation windows, and steps per window
 nw, nt, nx = args.nw, args.obs_freq, args.nx
 dt = args.dt
-re = args.re
+re, vprime = args.re, args.vprime
 umax = args.umax
 
 # Covariance of background, observation, and model noise
@@ -72,12 +72,12 @@ v = TestFunction(V)
 one = Constant(1.0)
 half = Constant(0.5)
 uh = half*(un1 + un)
-ic = Function(V).project(one + Constant(umax)*sin(2*pi*x))
+velocity = Function(V).project(one + Constant(vprime)*cos(2*pi*x))
 
 # finite element forms
-gscale = Constant(1.0)
 nuc = Constant(nu)
 k = Constant(umax)
+gscale = Constant(1.0)
 
 
 def g(tg):
@@ -91,32 +91,33 @@ def g(tg):
 
 
 F = (inner((un1 - un)/Constant(dt), v)*dx
-     + inner(uh, uh.dx(0))*v*dx
+     + inner(velocity, uh.dx(0))*v*dx
      + inner(nuc*grad(uh), grad(v))*dx
      - inner(g(t+0.5*dt), v)*dx(degree=4)
 )
 
-params = {
-    "snes_rtol": 1e-10,
-    "snes_type": "newtonls",
+solver_parameters = {
+    "snes_type": "ksponly",
     "ksp_type": "preonly",
     "pc_type": "lu",
 }
 
+solver = NonlinearVariationalSolver(
+    NonlinearVariationalProblem(F, un1),
+    solver_parameters=solver_parameters)
+
 def solve_step():
     un1.assign(un)
     t.assign(t + dt)
-    solve(F==0, un1, solver_parameters=params)
+    solver.solve()
     un.assign(un1)
 
 # "ground truth" reference solution
-reference_ic = ic.copy(deepcopy=True)
+reference_ic = Function(V).project(umax*sin(2*pi*x))
 
 # observations are point evaluations at random locations
 np.random.seed(15)
 stations = np.random.rand(args.nx_obs, 1)
-closest_stations = np.min(np.diff(np.sort(stations.flatten())))
-Print(f"{closest_stations = :.2e}")
 vom = VertexOnlyMesh(mesh, stations)
 Y = FunctionSpace(vom, "DG", 0)
 
@@ -212,7 +213,7 @@ tao_parameters = {
         'ksp_converged_maxits': None,
         'ksp_converged_rate': None,
         'ksp_max_it': 20,
-        'ksp_rtol': 1e-2,
+        'ksp_rtol': 1e-1,
         'ksp_type': 'cg',
         'pc_type': 'python',
         'pc_python_type': 'fdvar.CorrelationOperatorPC',
@@ -269,7 +270,7 @@ Print(f"{errornorm(truth_end, opt_end)/norm(truth_end) = :.3e}")
 
 if args.plot_vtk:
     from firedrake.output import VTKFile
-    vtk = VTKFile("outputs/burgers_sc4dvar.pvd")
+    vtk = VTKFile("outputs/advection_sc4dvar.pvd")
 
     mesh_out = UnitIntervalMesh(args.nx)
     Vout = FunctionSpace(mesh_out, "CG", 1)

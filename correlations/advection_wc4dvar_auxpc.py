@@ -82,40 +82,24 @@ velocity = Function(V).project(one + Constant(vprime)*cos(2*pi*x))
 # finite element forms
 nuc = Constant(nu)
 k = Constant(umax)
-gscale = Constant(1.0)
-
-
-def g(tg):
-    xp = 2*pi*x
-    tp = 2*pi*tg
-    kernel = 0.5*(1 - cos(xp))
-    return gscale*kernel*2*k*(
-        - sin(xp + (0.1*pi*sin(tp)))
-        + k*cos(tp+1)*sin(3*xp - 2*tp)
-    )
-
-
-F = (inner((un1 - un)/Constant(dt), v)*dx
+dtc = Constant(dt)
+F = (inner((un1 - un)/dtc, v)*dx
      + inner(velocity, uh.dx(0))*v*dx
      + inner(nuc*grad(uh), grad(v))*dx
-     - inner(g(t+0.5*dt), v)*dx(degree=4)
+     - inner(g, v)*dx(degree=4)
 )
 
-solver_parameters = {
+params = {
     "snes_type": "ksponly",
     "ksp_type": "preonly",
     "pc_type": "lu",
 }
 
-solver = NonlinearVariationalSolver(
-    NonlinearVariationalProblem(F, un1),
-    solver_parameters=solver_parameters)
-
 def solve_step():
     un1.assign(un)
-    t.assign(t + dt)
-    solver.solve()
+    solve(F==0, un1, solver_parameters=params)
     un.assign(un1)
+    t.assign(t + dtc)
 
 # "ground truth" reference solution
 reference_ic = Function(V).project(umax*sin(2*pi*x))
@@ -145,35 +129,34 @@ R = ExplicitMassCorrelation(Y, Rscale, seed=18)
 # Observation noise generator
 Rgen = ExplicitMassCorrelation(Y, sigma_r, seed=18-1)
 
-# create distributed control variable for entire timeseries
-nlocal_stages = nw//ensemble.ensemble_size
-nlocal_spaces = nlocal_stages + (erank == 0)
-W = EnsembleFunctionSpace(
-    [V for _ in range(nlocal_spaces)], ensemble)
-
 # generate "ground-truth" observational data
 y, background, target_end, ground_truth = generate_observation_data(
-    W, reference_ic, solve_step,
+    ensemble, reference_ic, solve_step,
     un, un1, [], t, H, nw, nt, B, Rgen, Q)
 
 # create function evaluating observation error at window i
 def observation_error(i):
     return lambda x: Function(Y).assign(H(x) - y[i])
+
+# create distributed control variable for entire timeseries
+nlocal_stages = nw//ensemble.ensemble_size
+nlocal_spaces = nlocal_stages + (erank == 0)
+W = EnsembleFunctionSpace(
+    [V for _ in range(nlocal_spaces)], ensemble)
 control = EnsembleFunction(W)
 
-truth = ground_truth
-# truth = EnsembleFunction(W)
-# if erank == 0:
-#     truth.subfunctions[0].assign(ground_truth[0])
-#     for j in range(1, nlocal_stages+1):
-#         jg = j*nt
-#         tsub = truth.subfunctions[j]
-#         tsub.assign(ground_truth[jg])
-# else:
-#     for j in range(nlocal_stages):
-#         jg = (j+1)*nt
-#         tsub = truth.subfunctions[j]
-#         tsub.assign(ground_truth[jg])
+truth = EnsembleFunction(W)
+if erank == 0:
+    truth.subfunctions[0].assign(ground_truth[0])
+    for j in range(1, nlocal_stages+1):
+        jg = j*nt
+        tsub = truth.subfunctions[j]
+        tsub.assign(ground_truth[jg])
+else:
+    for j in range(nlocal_stages):
+        jg = (j+1)*nt
+        tsub = truth.subfunctions[j]
+        tsub.assign(ground_truth[jg])
 
 for u in control.subfunctions:
     u.assign(background)
@@ -214,24 +197,79 @@ with Jhat.recording_stages(t=t) as stages:
 # tell pyadjoint to finish taping operations
 pause_annotation()
 
-prior = control.copy()
+########
+### Now we record the preconditioner system
+########
 
-if args.taylor_test:
-    from sys import exit
-    from pyadjoint import taylor_to_dict
-    from pprint import pprint
-    m = prior.copy()
-    h = m.copy()
-    with h.vec_wo() as v:
-        v.array[:] = np.random.random_sample(v.array.shape)
-    taylor = taylor_to_dict(Jhat, m, h)
-    pprint(taylor)
-    exit()
+# take fewer timesteps between each observation
+pnt = 2
+dtc.assign(dt*nt/pnt)
+
+pcontrol = control.copy()
+pbackground = background.copy(deepcopy=True)
+continue_annotation()
+
+# This object will construct and solve the 4DVar system
+JPhat = FourDVarReducedFunctional(
+    Control(pcontrol),
+    background=pbackground,
+    background_covariance=B,
+    observation_covariance=R,
+    observation_error=observation_error(0),
+    weak_constraint=True)
+
+# loop over each observation stage on the local communicator
+t.assign(0.0)
+with JPhat.recording_stages(t=t) as stages:
+    for stage, ctx in stages:
+        idx = stage.local_index + (erank == 0)
+        un.assign(stage.control)
+        un1.assign(un)
+        t.assign(ctx.t)
+
+        # let pyadjoint tape the time integration
+        for i in range(pnt):
+            solve_step()
+
+        # tell pyadjoint a) we have finished this stage
+        # and b) how to evaluate this observation error
+        stage.set_observation(
+            state=un,
+            observation_error=observation_error(idx),
+            observation_covariance=R,
+            forward_model_covariance=Q)
+
+# tell pyadjoint to finish taping operations
+pause_annotation()
+dtc.assign(dt)
+
+prior = Jhat.control.control.copy()
+JPhat(prior)
 
 # Solution strategy is controlled via this options dictionary
 lits = args.lits if args.lits >= 0 else nw+1
 
 ksp_monitor = 'ksp_monitor_short'
+
+from fdvar.pc import AuxiliaryReducedFunctionalPC
+from pyadjoint.optimization.tao_solver import HessianAction
+class Parareal4DVarPC(AuxiliaryReducedFunctionalPC):
+    prefix = "paravar_"
+    def reduced_functional(self, pc):
+        return (
+            Jhat, JPhat, HessianAction,
+            {'comm': ensemble.global_comm})
+
+nls_ksp_parameters = {
+    'ksp_view': f':logs/ksp_view.log',
+    ksp_monitor: None,
+    'ksp_converged_rate': None,
+    'ksp_converged_maxits': None,
+    'ksp_max_it': 20,
+    'ksp_min_it': 3,
+    'ksp_rtol': 1e-1,
+    'ksp_type': 'preonly',
+}
 
 tao_parameters = {
     'tao_view': f':logs/tao_view.log',
@@ -239,34 +277,29 @@ tao_parameters = {
     'tao_converged_reason': None,
     'tao_max_it': 30,
     'tao_ls_type': 'unit',
-    'tao_gttol': 1e-2,
-    'tao_grtol': 0,
+    'tao_gttol': 1e-1,
+    'tao_grtol': 1e-6,
     'tao_gatol': 0,
     'tao_type': 'nls',
-    'tao_nls': {
-        'ksp_view': f':logs/ksp_view.log',
-        f'{ksp_monitor}': None,
-        'ksp_converged_rate': None,
-        'ksp_converged_maxits': None,
-        'ksp_max_it': 20,
-        'ksp_min_it': 3,
-        'ksp_rtol': 1e-2,
-        'ksp_type': 'preonly',
-    }
+    'tao_nls': nls_ksp_parameters
 }
 
 schur_parameters = {
     'pc_type': 'python',
     'pc_python_type': 'fdvar.WC4DVarSchurPC',
+    'wcschur_use_amat': None,
     'wcschur_l': {
         'ksp_type': 'richardson',
         'ksp_converged_maxits': None,
-        # 'ksp_convergence_test': 'skip',
-        'ksp_max_it': lits,
         'ksp_rtol': 1e-5,
-        'pc_type': 'none',
-        # 'pc_type': 'python',
-        # 'pc_python_type': 'fdvar.IdentityPropagatorPC',
+        'pc_type': 'ksp',
+        'ksp': {
+            'ksp_convergence_test': 'skip',
+            'ksp_converged_maxits': None,
+            'ksp_type': 'richardson',
+            'ksp_max_it': lits,
+            'pc_type': 'none',
+        }
     },
     'wcschur_d': {
         'ksp_type': 'preonly',
@@ -285,6 +318,34 @@ schur_parameters = {
         'd_ksp_monitor': f':logs/wcschur_d_ksp_convergence.log',
     },
 }
+
+aux_parameters = {
+    'tao_view': f':logs/tao_view.log',
+    'tao_monitor': None,
+    'tao_converged_reason': None,
+    'tao_max_it': 30,
+    'tao_ls_type': 'unit',
+    'tao_gttol': 1e-2,
+    'tao_grtol': 1e-6,
+    'tao_gatol': 0,
+    'tao_type': 'nls',
+    'tao_nls': {
+        'ksp_view': f':logs/ksp_view.log',
+        'ksp_type': 'preonly',
+        'pc_type': 'python',
+        'pc_python_type': f'{__name__}.Parareal4DVarPC',
+        'paravar': {
+            ksp_monitor: None,
+            'ksp_converged_rate': None,
+            'ksp_converged_maxits': None,
+            'ksp_max_it': 20,
+            'ksp_min_it': 3,
+            'ksp_rtol': 1e-1,
+            'ksp_type': 'cg',
+        },
+    },
+}
+aux_parameters['tao_nls']['paravar'].update(schur_parameters)
 
 saddle_parameters = {
     'pc_type': 'python',
@@ -333,9 +394,14 @@ elif args.pc == "saddle":
 elif args.pc == "aux":
     tao_parameters = aux_parameters
 
+from pyadjoint.optimization.tao_solver import ReducedFunctionalMat
+Pmat = ReducedFunctionalMat(
+    JPhat, action=HessianAction,
+    comm=ensemble.global_comm)
+
 tao = TAOSolver(MinimizationProblem(Jhat),
                 parameters=tao_parameters,
-                options_prefix="")
+                options_prefix="", Pmat=Pmat)
 
 Print()
 xopt = tao.solve()

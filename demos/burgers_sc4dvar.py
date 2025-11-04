@@ -24,6 +24,7 @@ parser.add_argument('--obs_freq', type=int, default=5, help='Frequency of observ
 parser.add_argument('--nx_obs', type=int, default=20, help='Number of observations in space.')
 parser.add_argument('--seed', type=int, default=13, help='RNG seed.')
 parser.add_argument('--plot_vtk', action='store_true', help='Plot results after optimisation.')
+parser.add_argument('--vtk_file', type=str, default='burgers_sc4dvar', help='Name of VTK file.')
 parser.add_argument('--taylor_test', action='store_true', help='Run Taylor test on 4DVar ReducedFunctional.')
 parser.add_argument('--show_args', action='store_true', help='Output all the arguments.')
 
@@ -45,17 +46,17 @@ dt = args.dt
 re = args.re
 umax = args.umax
 
-# Covariance of background, observation, and model noise
-sigma_b = sqrt(args.sigmab_2)
-sigma_r = sqrt(args.sigmar_2)
-sigma_q = sqrt(args.sigmaq_2*(nt*dt))
-
 nu = 1/re
 Nt = nw*nt
 Tend = Nt*dt
 Tobs = nt*dt
 cfl = dt*nx
 Print(f"{nx=:>3d} | {nw=:>2d} | {Nt=:>3d} | {Tend=:.2e} | {Tobs=:.2e} | {cfl=:.2e}")
+
+# Covariance of background, observation, and model noise
+sigma_b = sqrt(args.sigmab_2)
+sigma_r = sqrt(args.sigmar_2)
+sigma_q = sqrt(args.sigmaq_2*Tobs)
 
 # 1D periodic mesh
 mesh = PeriodicUnitIntervalMesh(nx)
@@ -96,17 +97,21 @@ F = (inner((un1 - un)/Constant(dt), v)*dx
      - inner(g(t+0.5*dt), v)*dx(degree=4)
 )
 
-params = {
+solver_parameters = {
     "snes_rtol": 1e-10,
     "snes_type": "newtonls",
     "ksp_type": "preonly",
     "pc_type": "lu",
 }
 
+solver = NonlinearVariationalSolver(
+    NonlinearVariationalProblem(F, un1),
+    solver_parameters=solver_parameters)
+
 def solve_step():
     un1.assign(un)
     t.assign(t + dt)
-    solve(F==0, un1, solver_parameters=params)
+    solver.solve()
     un.assign(un1)
 
 # "ground truth" reference solution
@@ -206,6 +211,7 @@ tao_parameters = {
     'tao_converged_reason': None,
     'tao_gttol': 1e-2,
     'tao_gatol': 0,
+    'tao_grtol': 0,
     'tao_type': 'nls',
     'tao_nls': {
         'ksp_monitor': None,
@@ -263,21 +269,18 @@ Print(f"{errornorm(ref_ic, xopt)/norm(ref_ic) = :.3e}")
 Print(f"{errornorm(truth_end, ref_end)/norm(truth_end) = :.3e}")
 Print(f"{errornorm(truth_end, bkg_end)/norm(truth_end) = :.3e}")
 Print(f"{errornorm(truth_end, opt_end)/norm(truth_end) = :.3e}")
-# Print(f"{Jhat(bkg)   = :.3e}")
-# Print(f"{Jhat(xorig) = :.3e}")
-# Print(f"{Jhat(xopt)  = :.3e}")
 
 if args.plot_vtk:
     from firedrake.output import VTKFile
-    vtk = VTKFile("outputs/burgers_sc4dvar.pvd")
+    vtk = VTKFile(f"outputs/{args.vtk_file}.pvd")
 
     mesh_out = UnitIntervalMesh(args.nx)
     Vout = FunctionSpace(mesh_out, "CG", 1)
 
     ug = Function(Vout, name="ground_truth")
     ur = Function(Vout, name="reference")
-    up = Function(Vout, name="prior")
-    uo = Function(Vout, name="opt")
+    up = Function(Vout, name="background")
+    uo = Function(Vout, name="iteration 3")
     uf = Function(Vout, name="forcing")
 
     for i, (truth, ref, prior, opt, force) in enumerate(zip(ground_truth, reference,

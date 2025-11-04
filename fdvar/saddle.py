@@ -9,7 +9,7 @@ from firedrake.adjoint import ReducedFunctional
 from firedrake.adjoint.fourdvar_reduced_functional import FourDVarReducedFunctional
 from pyop2.mpi import MPI
 from pyadjoint.optimization.tao_solver import (
-    PETScVecInterface, ReducedFunctionalMat, TLMAction, AdjointAction)
+    PETScVecInterface, ReducedFunctionalMat, RFOperation)
 from pyadjoint.enlisting import Enlist
 from fdvar.pc import PCBase
 from fdvar.mat import EnsembleBlockDiagonalMat
@@ -167,19 +167,19 @@ def WC4DVarSaddlePointMat(Jhat):
     vec_dx = Wc.layout_vec.duplicate()
 
     Lmat = ReducedFunctionalMat(
-        Jhat.JL, action=TLMAction,
+        Jhat.JL, action=RFOperation.TLM,
         comm=ensemble.global_comm)
 
     LTmat = ReducedFunctionalMat(
-        Jhat.JL, action=AdjointAction,
+        Jhat.JL, action=RFOperation.ADJOINT,
         comm=ensemble.global_comm)
 
     Hmat = ReducedFunctionalMat(
-        Jhat.JH, action=TLMAction,
+        Jhat.JH, action=RFOperation.TLM,
         comm=ensemble.global_comm)
 
     HTmat = ReducedFunctionalMat(
-        Jhat.JH, action=AdjointAction,
+        Jhat.JH, action=RFOperation.ADJOINT,
         comm=ensemble.global_comm)
 
     BQmats = [

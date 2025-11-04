@@ -9,7 +9,7 @@ from fdvar.mat import (
     EnsembleBlockDiagonalMat,
     EnsembleBlockDiagonalMatCtx)
 from pyadjoint.optimization.tao_solver import (
-    ReducedFunctionalMat, TLMAction, AdjointAction)
+    ReducedFunctionalMat, RFOperation)
 from fdvar.correlations import CorrelationOperatorMat
 from math import pi, sqrt
 
@@ -174,6 +174,10 @@ class EnsembleBJacobiPC(EnsemblePCBase):
                 with sub_options.inserted_options():
                     sub_ksp.solve(rhs, sol)
 
+    def update(self, pc):
+        for ksp in self.sub_ksps:
+            ksp.setUp(pc)
+
 
 class WC4DVarSchurPC(PCBase):
     prefix = "wcschur_"
@@ -198,11 +202,11 @@ class WC4DVarSchurPC(PCBase):
         self.row_space = Jhat.control_space.dual()
 
         Lmat_p = ReducedFunctionalMat(
-            Jhat.JL, action=TLMAction,
+            Jhat.JL, action=RFOperation.TLM,
             comm=global_comm)
 
         LTmat_p = ReducedFunctionalMat(
-            Jhat.JL, action=AdjointAction,
+            Jhat.JL, action=RFOperation.ADJOINT,
             comm=global_comm)
 
         BQmats_p = [
@@ -230,11 +234,11 @@ class WC4DVarSchurPC(PCBase):
             self.Ahat = Ahat
 
             Lmat = ReducedFunctionalMat(
-                Ahat.JL, action=TLMAction,
+                Ahat.JL, action=RFOperation.TLM,
                 comm=global_comm)
 
             LTmat = ReducedFunctionalMat(
-                Ahat.JL, action=AdjointAction,
+                Ahat.JL, action=RFOperation.ADJOINT,
                 comm=global_comm)
 
             BQmats = [
@@ -333,6 +337,10 @@ class WC4DVarSchurPC(PCBase):
         self.Jhat(val)
         self.Jhat.derivative(apply_riesz=False)
 
+        self.Lksp.setUp()
+        self.LTksp.setUp()
+        self.Dksp.setUp()
+
 
 class AuxiliaryReducedFunctionalPC(PCBase):
     """
@@ -380,7 +388,7 @@ class AuxiliaryReducedFunctionalPC(PCBase):
         Return (arf, prf, action, **kwargs), where:
             - arf is the ReducedFunctional to use for Amat.
             - prf is the ReducedFunctional to use for Pmat.
-            - action is the RFAction for the Mats.
+            - action is the RFOperation for the Mats.
             - kwargs are passed to the ReducedFunctionalMat.
         """
         raise NotImplementedError(

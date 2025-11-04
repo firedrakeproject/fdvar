@@ -2,12 +2,13 @@ from firedrake import *
 import argparse
 
 parser = argparse.ArgumentParser(
-    description='Burgers equation.',
+    description='Advection diffusion equation.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
 )
 parser.add_argument('--nx', type=int, default=50, help='Number of elements.')
 parser.add_argument('--dt', type=float, default=1e-2, help='Number of elements.')
-parser.add_argument('--umax', type=float, default=0.3, help='Initial velocity variation.')
+parser.add_argument('--umax', type=float, default=0.3, help='Initial scalar variation.')
+parser.add_argument('--vprime', type=float, default=0.1, help='velocity perturbation.')
 parser.add_argument('--re', type=float, default=50, help='Reynolds number.')
 parser.add_argument('--nw', type=int, default=10, help='Number of observations stages.')
 parser.add_argument('--obs_freq', type=int, default=5, help='Frequency of observations in time.')
@@ -27,7 +28,7 @@ if args.show_args:
 # number of observation windows, and steps per window
 nw, nt, nx = args.nw, args.obs_freq, args.nx
 dt = args.dt
-re = args.re
+re, vprime = args.re, args.vprime
 umax = args.umax
 
 nu = 1/re
@@ -51,58 +52,54 @@ v = TestFunction(V)
 one = Constant(1.0)
 half = Constant(0.5)
 uh = half*(un1 + un)
-ic = Function(V).project(one + Constant(umax)*sin(2*pi*x))
+velocity = Function(V).project(one + Constant(vprime)*cos(2*pi*x))
 
 # finite element forms
 gscale = Constant(1.0)
 nuc = Constant(nu)
 k = Constant(umax)
+x1 = 1 - x
+t1 = Constant(0.5)*t + 1
 
-
-def g(tg):
-    xp = 2*pi*x
-    tp = 2*pi*tg
-    kernel = 0.5*(1 - cos(xp))
-    return gscale*kernel*2*k*(
-        - sin(xp + (0.1*pi*sin(tp)))
-        + k*cos(tp+1)*sin(3*xp - 2*tp)
-    )
-
-
-F = (inner((un1 - un)/Constant(dt), v)*dx
-     + inner(uh, uh.dx(0))*v*dx
-     + inner(nuc*grad(uh), grad(v))*dx
-     - inner(g(t+0.5*dt), v)*dx(degree=4)
+gscale = Constant(1.0)
+xp = 2*pi*x
+tp = 2*pi*t
+kernel = (0.5*(1 - cos(xp)))**2
+g = kernel*k*(
+    - 2*sin(xp + (0.1*pi*sin(tp)))
+    + k*cos(tp+1)*sin(3*xp - 2*tp)
 )
 
-solver_parameters = {
-    "snes_type": "newtonls",
+F = (inner((un1 - un)/Constant(dt), v)*dx
+     + inner(velocity, uh.dx(0))*v*dx
+     + inner(nuc*grad(uh), grad(v))*dx
+     - inner(gscale*g, v)*dx(degree=4)
+)
+
+params = {
+    "snes_type": "ksponly",
     "ksp_type": "preonly",
     "pc_type": "lu",
 }
 
-solver = NonlinearVariationalSolver(
-    NonlinearVariationalProblem(F, un1),
-    solver_parameters=solver_parameters)
-
 def solve_step():
     un1.assign(un)
-    solver.solve()
+    solve(F==0, un1, solver_parameters=params)
     un.assign(un1)
     t.assign(t + dt)
 
 # "ground truth" reference solution
-reference_ic = ic.copy(deepcopy=True)
+reference_ic = Function(V).project(umax*sin(2*pi*x))
 
 un.assign(reference_ic)
 t.assign(0)
 reference = [un.copy(deepcopy=True)]
-forcing = [Function(V).interpolate(g(t))]
+forcing = [Function(V).interpolate(g)]
 source = [assemble(forcing[-1]*dx)]
 for _ in range(Nt):
     solve_step()
     reference.append(un.copy(deepcopy=True))
-    forcing.append(Function(V).interpolate(g(t)))
+    forcing.append(Function(V).interpolate(g))
     source.append(assemble(forcing[-1]*dx))
 print(f"{sum(source) = }")
 
@@ -115,7 +112,7 @@ for _ in range(Nt):
     unforced.append(un.copy(deepcopy=True))
 
 from firedrake.output import VTKFile
-vtk = VTKFile("outputs/burgers.pvd")
+vtk = VTKFile("outputs/advection.pvd")
 
 mesh_out = UnitIntervalMesh(args.nx)
 Vout = FunctionSpace(mesh_out, "CG", 1)

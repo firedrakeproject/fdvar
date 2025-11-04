@@ -101,20 +101,16 @@ F = (inner((un1 - un)/Constant(dt), v)*dx
      - inner(g(t+0.5*dt), v)*dx(degree=4)
 )
 
-solver_parameters = {
+params = {
     "snes_type": "ksponly",
     "ksp_type": "preonly",
     "pc_type": "lu",
 }
 
-solver = NonlinearVariationalSolver(
-    NonlinearVariationalProblem(F, un1),
-    solver_parameters=solver_parameters)
-
 def solve_step():
     un1.assign(un)
     t.assign(t + dt)
-    solver.solve()
+    solve(F==0, un1, solver_parameters=params)
     un.assign(un1)
 
 # "ground truth" reference solution
@@ -145,35 +141,34 @@ R = ExplicitMassCorrelation(Y, Rscale, seed=18)
 # Observation noise generator
 Rgen = ExplicitMassCorrelation(Y, sigma_r, seed=18-1)
 
-# create distributed control variable for entire timeseries
-nlocal_stages = nw//ensemble.ensemble_size
-nlocal_spaces = nlocal_stages + (erank == 0)
-W = EnsembleFunctionSpace(
-    [V for _ in range(nlocal_spaces)], ensemble)
-
 # generate "ground-truth" observational data
 y, background, target_end, ground_truth = generate_observation_data(
-    W, reference_ic, solve_step,
+    ensemble, reference_ic, solve_step,
     un, un1, [], t, H, nw, nt, B, Rgen, Q)
 
 # create function evaluating observation error at window i
 def observation_error(i):
     return lambda x: Function(Y).assign(H(x) - y[i])
+
+# create distributed control variable for entire timeseries
+nlocal_stages = nw//ensemble.ensemble_size
+nlocal_spaces = nlocal_stages + (erank == 0)
+W = EnsembleFunctionSpace(
+    [V for _ in range(nlocal_spaces)], ensemble)
 control = EnsembleFunction(W)
 
-truth = ground_truth
-# truth = EnsembleFunction(W)
-# if erank == 0:
-#     truth.subfunctions[0].assign(ground_truth[0])
-#     for j in range(1, nlocal_stages+1):
-#         jg = j*nt
-#         tsub = truth.subfunctions[j]
-#         tsub.assign(ground_truth[jg])
-# else:
-#     for j in range(nlocal_stages):
-#         jg = (j+1)*nt
-#         tsub = truth.subfunctions[j]
-#         tsub.assign(ground_truth[jg])
+truth = EnsembleFunction(W)
+if erank == 0:
+    truth.subfunctions[0].assign(ground_truth[0])
+    for j in range(1, nlocal_stages+1):
+        jg = j*nt
+        tsub = truth.subfunctions[j]
+        tsub.assign(ground_truth[jg])
+else:
+    for j in range(nlocal_stages):
+        jg = (j+1)*nt
+        tsub = truth.subfunctions[j]
+        tsub.assign(ground_truth[jg])
 
 for u in control.subfunctions:
     u.assign(background)
@@ -265,8 +260,6 @@ schur_parameters = {
         'ksp_max_it': lits,
         'ksp_rtol': 1e-5,
         'pc_type': 'none',
-        # 'pc_type': 'python',
-        # 'pc_python_type': 'fdvar.IdentityPropagatorPC',
     },
     'wcschur_d': {
         'ksp_type': 'preonly',

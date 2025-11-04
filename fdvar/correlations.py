@@ -1,5 +1,4 @@
 from firedrake import *
-from pyadjoint.optimization.tao_solver import get_valid_comm
 
 __all__ = (
     "CorrelationOperatorBase",
@@ -109,7 +108,9 @@ class FormCorrelationOperatorBase(CorrelationOperatorBase):
         # diagonal approximation of inverse square root of mass matrix
         if Msqrt_inv is None:
             Msqrt_inv = Function(V)
-            Msqrt_inv.dat.data[:] = np.sqrt(1/assemble(self.Msolve, diagonal=True).dat.data)
+            Mdiag = assemble(self.Msolve, diagonal=True)
+            for minv, mdiag in zip(Msqrt_inv.dat, Mdiag.dat):
+                minv.data[:] = np.sqrt(1/mdiag.data)
         self.Msqrt_inv = Msqrt_inv
 
     def _MinvG(self, x, w=None):

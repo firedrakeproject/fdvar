@@ -100,17 +100,21 @@ F = (inner((un1 - un)/Constant(dt), v)*dx
      - inner(g(t+0.5*dt), v)*dx(degree=4)
 )
 
-params = {
+solver_parameters = {
     "snes_rtol": 1e-8,
     "snes_type": "newtonls",
     "ksp_type": "preonly",
     "pc_type": "lu",
 }
 
+solver = NonlinearVariationalSolver(
+    NonlinearVariationalProblem(F, un1),
+    solver_parameters=solver_parameters)
+
 def solve_step():
     un1.assign(un)
     t.assign(t + dt)
-    solve(F==0, un1, solver_parameters=params)
+    solver.solve()
     un.assign(un1)
 
 # "ground truth" reference solution
