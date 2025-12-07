@@ -2,7 +2,7 @@ from firedrake import *
 from firedrake.adjoint import *
 from irksome import Dt, TimeStepper, GaussLegendre
 from fdvar import generate_observation_data
-from fdvar.correlations import *
+from firedrake.adjoint.correlation_operators import *
 import argparse
 
 parser = argparse.ArgumentParser(
@@ -217,7 +217,7 @@ tao_parameters = {
         'ksp_rtol': 1e-1,
         'ksp_type': 'cg',
         'pc_type': 'python',
-        'pc_python_type': 'fdvar.CorrelationOperatorPC',
+        'pc_python_type': 'firedrake.adjoint.correlation_operators.CorrelationOperatorPC',
     },
 }
 
