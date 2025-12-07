@@ -4,6 +4,8 @@ from firedrake.adjoint.correlation_operators import *
 from fdvar import generate_observation_data
 import argparse
 
+PETSc.Sys.popErrorHandler()
+
 parser = argparse.ArgumentParser(
     description='Weak constraint 4DVar for the advection diffusion equation.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -265,13 +267,11 @@ schur_parameters = {
         'ksp_max_it': lits,
         'ksp_rtol': 1e-5,
         'pc_type': 'none',
-        # 'pc_type': 'python',
-        # 'pc_python_type': 'fdvar.IdentityPropagatorPC',
     },
     'wcschur_d': {
         'ksp_type': 'preonly',
         'pc_type': 'python',
-        'pc_python_type': 'fdvar.EnsembleBJacobiPC',
+        'pc_python_type': 'firedrake.EnsembleBJacobiPC',
         'sub_ksp_type': 'preonly',
         'sub_pc_type': 'python',
         'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
@@ -311,7 +311,7 @@ saddle_parameters = {
             'fieldsplit': {
                 'ksp_type': 'preonly',
                 'pc_type': 'python',
-                'pc_python_type': 'fdvar.EnsembleBJacobiPC',
+                'pc_python_type': 'firedrake.EnsembleBJacobiPC',
                 'sub_pc_type': 'python',
                 'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
             },
@@ -338,7 +338,11 @@ tao = TAOSolver(MinimizationProblem(Jhat),
                 options_prefix="")
 
 Print()
-xopt = tao.solve()
+try:
+    xopt = tao.solve()
+except:
+    pass
+from sys import exit; exit()
 
 prior_ic = prior.subfunctions[0]
 prior_end = prior.subfunctions[-1]
