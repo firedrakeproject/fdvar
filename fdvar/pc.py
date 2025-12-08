@@ -1,10 +1,10 @@
 import firedrake as fd
 from firedrake.petsc import PETSc
 import petsctools
-from firedrake.adjoint import FourDVarReducedFunctional
+from firedrake.adjoint import (
+    FourDVarReducedFunctional, CovarianceMat, CovarianceMatCtx)
 from pyadjoint.optimization.tao_solver import (
     ReducedFunctionalMat, RFOperation)
-from fdvar.correlations import CorrelationOperatorMat
 
 
 class WC4DVarSchurPC(petsctools.PCBase):
@@ -43,8 +43,8 @@ class WC4DVarSchurPC(petsctools.PCBase):
             comm=global_comm)
 
         BQmats_p = [
-            CorrelationOperatorMat(
-                rf.covariance, action='solve')
+            CovarianceMat(
+                rf.covariance, operation=CovarianceMatCtx.Operation.INVERSE)
             for rf in Jhat.JD.rfs]
 
         Dmat_p = fd.EnsembleBlockDiagonalMat(
@@ -78,8 +78,8 @@ class WC4DVarSchurPC(petsctools.PCBase):
                 comm=global_comm)
 
             BQmats = [
-                CorrelationOperatorMat(
-                    rf.covariance, action='solve')
+                CovarianceMat(
+                    rf.covariance, operation=CovarianceMatCtx.Operation.INVERSE)
                 for rf in Ahat.JD.rfs]
 
             Dmat = fd.EnsembleBlockDiagonalMat(
@@ -235,8 +235,8 @@ def WC4DVarSaddlePointMat(Jhat):
         comm=ensemble.global_comm)
 
     BQmats = [
-        CorrelationOperatorMat(
-            rf.covariance, action='apply')
+        CovarianceMat(
+            rf.covariance, operation=CovarianceMatCtx.Operation.ACTION)
         for rf in Jhat.JD.rfs]
 
     Dmat = fd.EnsembleBlockDiagonalMat(
@@ -244,8 +244,8 @@ def WC4DVarSaddlePointMat(Jhat):
         row_space=Wc.dual())
 
     Rmats = [
-        CorrelationOperatorMat(
-            rf.covariance, action='apply')
+        CovarianceMat(
+            rf.covariance, operation=CovarianceMatCtx.Operation.ACTION)
         for rf in Jhat.JR.rfs]
 
     Rmat = fd.EnsembleBlockDiagonalMat(

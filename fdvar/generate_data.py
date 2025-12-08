@@ -28,7 +28,7 @@ def generate_observation_data(W, ic, stepper, un, un1, bcs, t, H,
     else:
         ground_truth = []
 
-    bnoise = B.correlated_noise()
+    bnoise = B.sample()
     if ensemble:
         bnoise = ensemble.bcast(bnoise, root=0)
 
@@ -45,7 +45,7 @@ def generate_observation_data(W, ic, stepper, un, un1, bcs, t, H,
     # initial observation
     if rank == 0:
         Hx = H(ic)
-        Hx.assign(Hx + R.correlated_noise())
+        Hx.assign(Hx + R.sample())
         y.append(Hx)
 
     # We need to make sure that the generated noise
@@ -53,13 +53,13 @@ def generate_observation_data(W, ic, stepper, un, un1, bcs, t, H,
     # To do this we generate all noise on rank 0
     # and broadcast to all other ranks.
     if ensemble:
-        rnoise = [ensemble.bcast(R.correlated_noise(), root=0)
+        rnoise = [ensemble.bcast(R.sample(), root=0)
                   for _ in range(nw)]
-        qnoise = [ensemble.bcast(Q.correlated_noise(), root=0)
+        qnoise = [ensemble.bcast(Q.sample(), root=0)
                   for _ in range(nw)]
     else:
-        rnoise = [R.correlated_noise() for _ in range(nw)]
-        qnoise = [Q.correlated_noise() for _ in range(nw)]
+        rnoise = [R.sample() for _ in range(nw)]
+        qnoise = [Q.sample() for _ in range(nw)]
 
     def solve_local_stages(stage_offset=0):
 

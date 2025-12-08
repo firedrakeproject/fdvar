@@ -2,7 +2,6 @@ from firedrake import *
 from firedrake.adjoint import *
 from irksome import Dt, TimeStepper, GaussLegendre
 from fdvar import generate_observation_data
-from firedrake.adjoint.correlation_operators import *
 import argparse
 
 parser = argparse.ArgumentParser(
@@ -122,20 +121,20 @@ def H(x):  # operator to take observations
     return assemble(interpolate(x, Y))
 
 # Background correlation operator
-B = ImplicitDiffusionCorrelation(V, sigma_b, args.L_b, m=args.Bm, seed=2)
+B = AutoregressiveCovariance(V, L=args.L_b, sigma=sigma_b, m=args.Bm)
 
 # Model correlation operator
-Q = ImplicitDiffusionCorrelation(V, sigma_q, args.L_q, m=args.Qm, seed=17)
+Q = AutoregressiveCovariance(V, L=args.L_q, sigma=sigma_q, m=args.Qm)
 
 # Observation correlation operator
 Rscale = Function(Y)
 rdata = Rscale.dat.data
 rdata[:] = (
     sigma_r + (1 - sigma_r)*np.random.random_sample(rdata.shape))
-R = ExplicitMassCorrelation(Y, Rscale, seed=18)
+R = AutoregressiveCovariance(Y, L=0, sigma=Rscale, m=0)
 
 # Observation noise generator
-Rgen = ExplicitMassCorrelation(Y, sigma_r, seed=18-1)
+Rgen = AutoregressiveCovariance(Y, L=0, sigma=sigma_r, m=0)
 
 def solve_step():
     stepper.advance()
@@ -217,14 +216,16 @@ tao_parameters = {
         'ksp_rtol': 1e-1,
         'ksp_type': 'cg',
         'pc_type': 'python',
-        'pc_python_type': 'firedrake.adjoint.correlation_operators.CorrelationOperatorPC',
+        'pc_python_type': 'firedrake.adjoint.CovariancePC',
     },
 }
+
+Pmat = CovarianceMat(B, operation=CovarianceMatCtx.Operation.INVERSE)
 
 tao = TAOSolver(MinimizationProblem(Jhat),
                 parameters=tao_parameters,
                 options_prefix="",
-                Pmat=CorrelationOperatorMat(B))
+                Pmat=Pmat)
 xopt = tao.solve()
 
 un.assign(reference_ic)
