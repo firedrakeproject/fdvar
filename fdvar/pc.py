@@ -131,9 +131,12 @@ class WC4DVarSchurPC(petsctools.PCBase):
         rhs = x.copy()
         sol = y.copy()
 
+        # TODO: this should be done by update
         val = self.Ahat.control.data()
         self.Jhat(val)
         self.Jhat.derivative(apply_riesz=False)
+
+        sol.zeroEntries()
 
         with petsctools.inserted_options(self.LTksp):
             self.LTksp.solve(rhs, sol)
@@ -153,9 +156,10 @@ class WC4DVarSchurPC(petsctools.PCBase):
         sol.copy(result=y)
 
     def update(self, pc):
-        val = self.Ahat.control.data()
-        self.Jhat(val)
-        self.Jhat.derivative(apply_riesz=False)
+        if self.Jhat is not self.Ahat:
+            val = self.Ahat.control.data()
+            self.Jhat(val)
+            # self.Jhat.derivative(apply_riesz=False)
 
         self.Lksp.setUp()
         self.LTksp.setUp()
@@ -358,9 +362,9 @@ class WC4DVarSaddlePointPC(petsctools.PCBase):
         return vec
 
     def apply(self, pc, x, y):
-        # self._build_rhs()
         self.sol.zeroEntries()
         self.rhs.zeroEntries()
+        # self._build_rhs()
 
         if self.rhs_type == "saddle":
             val = self.Jhat.control.data()
@@ -380,10 +384,11 @@ class WC4DVarSaddlePointPC(petsctools.PCBase):
         self.sol_dx.copy(result=y)
 
     def update(self, pc):
-        val = self.Jhat.control.data()
-        self.Jphat(val)
-        self.Jphat.derivative(apply_riesz=False)
-        self.val = val
+        if self.Jphat is not self.Jhat:
+            val = self.Jhat.control.data()
+            self.Jphat(val)
+            self.Jphat.derivative(apply_riesz=False)
+        self.saddle_ksp.setUp()
 
 
 class AuxiliaryReducedFunctionalPC(petsctools.PCBase):
@@ -406,19 +411,36 @@ class AuxiliaryReducedFunctionalPC(petsctools.PCBase):
         'pc_type': 'none',
     }
 
+    needs_python_pmat = True
+    needs_python_amat = True
+
     def initialize(self, pc):
         super().initialize(pc)
 
-        arf, prf, action, mat_kwargs = self.reduced_functional(pc)
+        self.arf = self.amat.rf
 
-        amat = ReducedFunctionalMat(arf, action, **mat_kwargs)
-        pmat = ReducedFunctionalMat(prf, action, **mat_kwargs)
+        self.prf, action, mat_kwargs = self.reduced_functional(pc)
+
+        comm = self.pc.comm
+
+        pmat = ReducedFunctionalMat(
+            self.prf, action, comm=comm, **mat_kwargs)
+        self.aux_mat = pmat
+
+        if self.use_amat:
+            amat = ReducedFunctionalMat(
+                self.arf, action, comm=comm, **mat_kwargs)
+        else:
+            amat = pmat
 
         self.ksp = PETSc.KSP().create(comm=amat.comm)
         self.ksp.setOperators(amat, pmat)
-        petsctools.set_from_options(
+        petsctools.attach_options(
             self.ksp, parameters=self.default_options,
             options_prefix=self.full_prefix)
+
+        for k, v in self.default_options:
+            petsctools.set_default_parameter(self.ksp, k, v)
 
         self.ksp.incrementTabLevel(1, parent=pc)
         self.ksp.pc.incrementTabLevel(1, parent=pc)
@@ -427,10 +449,15 @@ class AuxiliaryReducedFunctionalPC(petsctools.PCBase):
         with petsctools.inserted_options(self.ksp):
             self.ksp.solve(x, y)
 
+    def update(self, pc):
+        val = self.arf.control.data()
+        self.prf(val)
+        if self.aux_mat.update_adjoint():
+            self.prf.derivative(apply_riesz=False)
+
     def reduced_functional(self, pc):
         """
-        Return (arf, prf, action, **kwargs), where:
-            - arf is the ReducedFunctional to use for Amat.
+        Return (prf, action, **kwargs), where:
             - prf is the ReducedFunctional to use for Pmat.
             - action is the RFOperation for the Mats.
             - kwargs are passed to the ReducedFunctionalMat.
