@@ -1,6 +1,8 @@
+from itertools import count
 from firedrake import *
 from firedrake.adjoint import *
-from firedrake.adjoint.correlation_operators import *
+from pyadjoint.optimization.tao_solver import TAOConvergenceError
+from irksome import Dt, TimeStepper, GaussLegendre
 from fdvar import generate_observation_data
 import argparse
 
@@ -25,9 +27,9 @@ parser.add_argument('--L_q', type=float, default=0.05, help='Model correlation l
 parser.add_argument('--nw', type=int, default=10, help='Number of observations stages.')
 parser.add_argument('--obs_freq', type=int, default=5, help='Frequency of observations in time.')
 parser.add_argument('--nx_obs', type=int, default=20, help='Number of observations in space..')
-parser.add_argument('--seed', type=int, default=13, help='RNG seed.')
+parser.add_argument('--seed', type=int, default=6, help='RNG seed.')
 parser.add_argument('--lits', type=int, default=-1, help='Number of Richardson iterations for L and L^T. Defaults to nw if < 0.')
-parser.add_argument('--pc', type=str, default="schur", choices=("schur", "saddle", "aux"), help='Type of preconditioning strategy.')
+parser.add_argument('--pc', type=str, default="schur", choices=("schur", "saddle"), help='Type of preconditioning strategy.')
 parser.add_argument('--taylor_test', action='store_true', help='Run Taylor test instead of optimisation.')
 parser.add_argument('--show_args', action='store_true', help='Output all the arguments.')
 
@@ -40,7 +42,8 @@ if args.show_args:
     Print(args)
     Print()
 
-np.random.seed(args.seed)
+seed = count(args.seed)
+np.random.seed(next(seed))
 
 # number of observation windows, and steps per window
 nw, nt, nx = args.nw, args.obs_freq, args.nx
@@ -74,11 +77,10 @@ Vr = FunctionSpace(mesh, "R", 0)
 
 t = Function(Vr).zero()
 
-un, un1 = Function(V), Function(V)
+un = Function(V)
 v = TestFunction(V)
 one = Constant(1.0)
 half = Constant(0.5)
-uh = half*(un1 + un)
 velocity = Function(V).project(one + Constant(vprime)*cos(2*pi*x))
 
 # finite element forms
@@ -97,10 +99,10 @@ def g(tg):
     )
 
 
-F = (inner((un1 - un)/Constant(dt), v)*dx
-     + inner(velocity, uh.dx(0))*v*dx
-     + inner(nuc*grad(uh), grad(v))*dx
-     - inner(g(t+0.5*dt), v)*dx(degree=4)
+F = (inner(Dt(un), v)*dx
+     + inner(velocity, un.dx(0))*v*dx
+     + inner(nuc*grad(un), grad(v))*dx
+     - inner(g(t), v)*dx(degree=4)
 )
 
 solver_parameters = {
@@ -109,21 +111,22 @@ solver_parameters = {
     "pc_type": "lu",
 }
 
-solver = NonlinearVariationalSolver(
-    NonlinearVariationalProblem(F, un1),
-    solver_parameters=solver_parameters)
+tableau = GaussLegendre(1)
+
+stepper = TimeStepper(
+    F, tableau, t, dt, un,
+    solver_parameters=solver_parameters,
+    options_prefix="")
+un = stepper.u0
 
 def solve_step():
-    un1.assign(un)
+    stepper.advance()
     t.assign(t + dt)
-    solver.solve()
-    un.assign(un1)
 
 # "ground truth" reference solution
 reference_ic = Function(V).project(umax*sin(2*pi*x))
 
 # observations are point evaluations at random locations
-np.random.seed(15)
 stations = np.random.rand(args.nx_obs, 1)
 vom = VertexOnlyMesh(mesh, stations)
 Y = FunctionSpace(vom, "DG", 0)
@@ -132,20 +135,20 @@ def H(x):  # operator to take observations
     return assemble(interpolate(x, Y))
 
 # Background correlation operator
-B = ImplicitDiffusionCorrelation(V, sigma_b, args.L_b, m=args.Bm, seed=2)
+B = AutoregressiveCovariance(V, L=args.L_b, sigma=sigma_b, m=args.Bm, seed=next(seed))
 
 # Model correlation operator
-Q = ImplicitDiffusionCorrelation(V, sigma_q, args.L_q, m=args.Qm, seed=17)
+Q = AutoregressiveCovariance(V, L=args.L_q, sigma=sigma_q, m=args.Qm, seed=next(seed))
 
 # Observation correlation operator
 Rscale = Function(Y)
 rdata = Rscale.dat.data
 rdata[:] = (
     sigma_r + (1 - sigma_r)*np.random.random_sample(rdata.shape))
-R = ExplicitMassCorrelation(Y, Rscale, seed=18)
+R = AutoregressiveCovariance(Y, L=0, sigma=Rscale, m=0, seed=next(seed))
 
 # Observation noise generator
-Rgen = ExplicitMassCorrelation(Y, sigma_r, seed=18-1)
+Rgen = AutoregressiveCovariance(Y, L=0, sigma=sigma_r, m=0, seed=next(seed))
 
 # create distributed control variable for entire timeseries
 nlocal_stages = nw//ensemble.ensemble_size
@@ -156,7 +159,7 @@ W = EnsembleFunctionSpace(
 # generate "ground-truth" observational data
 y, background, target_end, ground_truth = generate_observation_data(
     W, reference_ic, solve_step,
-    un, un1, [], t, H, nw, nt, B, Rgen, Q)
+    un, un, [], t, H, nw, nt, B, Rgen, Q)
 
 # create function evaluating observation error at window i
 def observation_error(i):
@@ -164,18 +167,6 @@ def observation_error(i):
 control = EnsembleFunction(W)
 
 truth = ground_truth
-# truth = EnsembleFunction(W)
-# if erank == 0:
-#     truth.subfunctions[0].assign(ground_truth[0])
-#     for j in range(1, nlocal_stages+1):
-#         jg = j*nt
-#         tsub = truth.subfunctions[j]
-#         tsub.assign(ground_truth[jg])
-# else:
-#     for j in range(nlocal_stages):
-#         jg = (j+1)*nt
-#         tsub = truth.subfunctions[j]
-#         tsub.assign(ground_truth[jg])
 
 for u in control.subfunctions:
     u.assign(background)
@@ -197,18 +188,19 @@ t.assign(0.0)
 with Jhat.recording_stages(t=t) as stages:
     for stage, ctx in stages:
         idx = stage.local_index + (erank == 0)
-        un.assign(stage.control)
-        un1.assign(un)
+        stepper.u0.assign(stage.control)
+        stepper.stages.zero()
         t.assign(ctx.t)
 
         # let pyadjoint tape the time integration
         for i in range(nt):
-            solve_step()
+            stepper.advance()
+            t += t
 
         # tell pyadjoint a) we have finished this stage
         # and b) how to evaluate this observation error
         stage.set_observation(
-            state=un,
+            state=stepper.u0,
             observation_error=observation_error(idx),
             observation_covariance=R,
             forward_model_covariance=Q)
@@ -251,7 +243,7 @@ tao_parameters = {
         'ksp_converged_rate': None,
         'ksp_converged_maxits': None,
         'ksp_max_it': 20,
-        'ksp_min_it': 3,
+        'ksp_min_it': 2,
         'ksp_rtol': 1e-2,
         'ksp_type': 'preonly',
     }
@@ -263,7 +255,7 @@ schur_parameters = {
     'wcschur_l': {
         'ksp_type': 'richardson',
         'ksp_converged_maxits': None,
-        # 'ksp_convergence_test': 'skip',
+        'ksp_convergence_test': 'skip',
         'ksp_max_it': lits,
         'ksp_rtol': 1e-5,
         'pc_type': 'none',
@@ -274,7 +266,7 @@ schur_parameters = {
         'pc_python_type': 'firedrake.EnsembleBJacobiPC',
         'sub_ksp_type': 'preonly',
         'sub_pc_type': 'python',
-        'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
+        'sub_pc_python_type': 'firedrake.adjoint.CovariancePC',
     },
     'wcschur': {  # monitors
         'l_tlm_ksp_view': f':logs/wcschur_ltlm_ksp_view.log',
@@ -296,7 +288,7 @@ saddle_parameters = {
         'ksp_converged_rate': None,
         'ksp_converged_maxits': None,
         'ksp_max_it': 100,
-        'ksp_min_it': 6,
+        'ksp_min_it': 4,
         'ksp_rtol': 1e-3,
         'ksp_type': 'gmres',
         'pc_type': 'fieldsplit',
@@ -313,7 +305,7 @@ saddle_parameters = {
                 'pc_type': 'python',
                 'pc_python_type': 'firedrake.EnsembleBJacobiPC',
                 'sub_pc_type': 'python',
-                'sub_pc_python_type': 'fdvar.CorrelationOperatorPC',
+                'sub_pc_python_type': 'firedrake.adjoint.CovariancePC',
             },
             'fieldsplit_0_ksp_monitor': f':logs/wcsaddle_d_ksp_convergence.log',
             'fieldsplit_1_ksp_monitor': f':logs/wcsaddle_r_ksp_convergence.log',
@@ -330,8 +322,6 @@ if args.pc == "schur":
 elif args.pc == "saddle":
     tao_parameters["tao_nls"].update(saddle_parameters)
     tao_parameters["tao_nls"]["ksp_type"] = "preonly"
-elif args.pc == "aux":
-    tao_parameters = aux_parameters
 
 tao = TAOSolver(MinimizationProblem(Jhat),
                 parameters=tao_parameters,
@@ -340,9 +330,10 @@ tao = TAOSolver(MinimizationProblem(Jhat),
 Print()
 try:
     xopt = tao.solve()
-except:
-    pass
-from sys import exit; exit()
+except TAOConvergenceError as err:
+    print(err)
+    xopt = Jhat.controls[0]._ad_copy()
+    tao._vec_interface.from_petsc(tao.x, xopt)
 
 prior_ic = prior.subfunctions[0]
 prior_end = prior.subfunctions[-1]
@@ -366,10 +357,15 @@ Print()
 Print(f"{norm(truth_ic) = :.3e} | {norm(truth_end) = :.3e}")
 Print(f"{norm(prior_ic) = :.3e} | {norm(prior_end) = :.3e}")
 Print(f"{norm(xopts_ic) = :.3e} | {norm(xopts_end) = :.3e}")
+Print()
 Print(f"{errornorm(prior_ic, xopts_ic)/norm(prior_ic) = :.3e}")
 Print(f"{errornorm(truth_ic, prior_ic)/norm(truth_ic) = :.3e}")
 Print(f"{errornorm(truth_ic, xopts_ic)/norm(truth_ic) = :.3e}")
+Print()
 Print(f"{errornorm(prior_end, xopts_end)/norm(prior_end) = :.3e}")
 Print(f"{errornorm(truth_end, prior_end)/norm(truth_end) = :.3e}")
 Print(f"{errornorm(truth_end, xopts_end)/norm(truth_end) = :.3e}")
+prior_error = errornorm(truth_end, prior_end)
+xopts_error = errornorm(truth_end, xopts_end)
+Print(f"Error reduction factor at final timestep = {xopts_error/prior_error:.3e}")
 Print()

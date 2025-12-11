@@ -1,3 +1,4 @@
+from itertools import count
 from firedrake import *
 from firedrake.adjoint import *
 from irksome import Dt, TimeStepper, GaussLegendre
@@ -23,7 +24,7 @@ parser.add_argument('--L_q', type=float, default=0.05, help='Model correlation l
 parser.add_argument('--nw', type=int, default=10, help='Number of observations stages.')
 parser.add_argument('--obs_freq', type=int, default=5, help='Frequency of observations in time.')
 parser.add_argument('--nx_obs', type=int, default=20, help='Number of observations in space.')
-parser.add_argument('--seed', type=int, default=13, help='RNG seed.')
+parser.add_argument('--seed', type=int, default=6, help='RNG seed.')
 parser.add_argument('--plot_vtk', action='store_true', help='Plot results after optimisation.')
 parser.add_argument('--taylor_test', action='store_true', help='Run Taylor test on 4DVar ReducedFunctional.')
 parser.add_argument('--show_args', action='store_true', help='Output all the arguments.')
@@ -37,7 +38,8 @@ if args.show_args:
     Print(args)
     Print()
 
-np.random.seed(args.seed)
+seed = count(args.seed)
+np.random.seed(next(seed))
 
 # number of observation windows, and steps per window
 nw, nt, nx = args.nw, args.obs_freq, args.nx
@@ -112,7 +114,6 @@ un = stepper.u0
 reference_ic = Function(V).project(umax*sin(2*pi*x))
 
 # observations are point evaluations at random locations
-np.random.seed(15)
 stations = np.random.rand(args.nx_obs, 1)
 vom = VertexOnlyMesh(mesh, stations)
 Y = FunctionSpace(vom, "DG", 0)
@@ -121,20 +122,20 @@ def H(x):  # operator to take observations
     return assemble(interpolate(x, Y))
 
 # Background correlation operator
-B = AutoregressiveCovariance(V, L=args.L_b, sigma=sigma_b, m=args.Bm)
+B = AutoregressiveCovariance(V, L=args.L_b, sigma=sigma_b, m=args.Bm, seed=next(seed))
 
 # Model correlation operator
-Q = AutoregressiveCovariance(V, L=args.L_q, sigma=sigma_q, m=args.Qm)
+Q = AutoregressiveCovariance(V, L=args.L_q, sigma=sigma_q, m=args.Qm, seed=next(seed))
 
 # Observation correlation operator
 Rscale = Function(Y)
 rdata = Rscale.dat.data
 rdata[:] = (
     sigma_r + (1 - sigma_r)*np.random.random_sample(rdata.shape))
-R = AutoregressiveCovariance(Y, L=0, sigma=Rscale, m=0)
+R = AutoregressiveCovariance(Y, L=0, sigma=Rscale, m=0, seed=next(seed))
 
 # Observation noise generator
-Rgen = AutoregressiveCovariance(Y, L=0, sigma=sigma_r, m=0)
+Rgen = AutoregressiveCovariance(Y, L=0, sigma=sigma_r, m=0, seed=next(seed))
 
 def solve_step():
     stepper.advance()
@@ -168,7 +169,7 @@ Jhat = FourDVarReducedFunctional(
 t.assign(0.0)
 with Jhat.recording_stages(nstages=nw, t=t) as stages:
     for stage, ctx in stages:
-        idx = stage.local_index + 1
+        idx = stage.local_index + (erank == 0)
         stepper.u0.assign(stage.control)
         t.assign(ctx.t)
 
@@ -220,7 +221,7 @@ tao_parameters = {
     },
 }
 
-Pmat = CovarianceMat(B, operation=CovarianceMatCtx.Operation.INVERSE)
+Pmat = CovarianceMat(B, operation='inverse')
 
 tao = TAOSolver(MinimizationProblem(Jhat),
                 parameters=tao_parameters,
@@ -266,9 +267,10 @@ Print(f"{errornorm(ref_ic, xopt)/norm(ref_ic) = :.3e}")
 Print(f"{errornorm(truth_end, ref_end)/norm(truth_end) = :.3e}")
 Print(f"{errornorm(truth_end, bkg_end)/norm(truth_end) = :.3e}")
 Print(f"{errornorm(truth_end, opt_end)/norm(truth_end) = :.3e}")
-# Print(f"{Jhat(bkg)   = :.3e}")
-# Print(f"{Jhat(xorig) = :.3e}")
-# Print(f"{Jhat(xopt)  = :.3e}")
+bkg_error = errornorm(truth_end, bkg_end)
+opt_error = errornorm(truth_end, opt_end)
+Print(f"Error reduction factor at final timestep = {opt_error/bkg_error:.3e}")
+Print()
 
 if args.plot_vtk:
     from firedrake.output import VTKFile
