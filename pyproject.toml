@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fdvar"
+version = "2026.1"
+authors = [
+   {name = "Josh Hope-Collins", email = "joshua.hope-collins13@imperial.ac.uk"},
+]
+description = "4DVar data assimilation methods using Firedrake"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+   "Programming Language :: Python",
+]
+
+[project.urls]
+Repository = "https://github.com/firedrakeproject/fdvar.git"
+
+[tool.setuptools.packages.find]
+include = [
+   "fdvar*",
+]
