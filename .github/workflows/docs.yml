@@ -1,0 +1,79 @@
+name: Build/deploy docs
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  # Cancels jobs running if new commits are pushed
+  group: >
+    ${{ github.workflow }}-
+    ${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build docs
+    runs-on: [self-hosted, Linux]
+    container:
+      image: firedrakeproject/firedrake-vanilla-default:dev-main
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Fix HOME
+        # For unknown reasons GitHub actions overwrite HOME to /github/home
+        # which will break everything unless fixed
+        # (https://github.com/actions/runner/issues/863)
+        run: echo "HOME=/home/firedrake" >> "$GITHUB_ENV"
+
+      - name: Firedrake branch
+        run: |
+          cd /opt/firedrake
+          git checkout allatoncereducedfunctional
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+
+      - uses: actions/checkout@v4
+        with:
+          path: fdvar-repo
+
+      - name: Install fdvar
+        run: |
+          : # Pass '--system-site-packages' so already installed packages can be found
+          python3 -m venv --system-site-packages venv-fdvar
+          . venv-fdvar/bin/activate
+          pip install --verbose './fdvar-repo[docs]'
+
+      - name: Check documentation links
+        if: github.ref == 'refs/heads/main'
+        run: |
+          . venv-fdvar/bin/activate
+          make -C fdvar-repo/docs linkcheck
+
+      - name: Build docs
+        run: |
+          . venv-fdvar/bin/activate
+          cd fdvar-repo/docs
+          make html
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          name: github-pages
+          path: /__w/fdvar/fdvar/fdvar-repo/docs/build/html
+          retention-days: 1
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

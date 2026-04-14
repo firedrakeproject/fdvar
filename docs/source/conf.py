@@ -16,7 +16,10 @@ release = '2026.1'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    "sphinx_design"
+    "sphinx_design",
+    "sphinx.ext.apidoc",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.intersphinx"
 ]
 
 templates_path = ['_templates']
@@ -52,3 +55,14 @@ html_sidebars = {
 }
 
 html_style = "fdvar.css"
+
+# -- sphinx.ext.apidoc configuration ------------------------------------------
+
+apidoc_modules = [
+    {"path": "../../fdvar", "destination": "generated"},
+]
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'firedrake': ('https://firedrakeproject.org', None)
+}
