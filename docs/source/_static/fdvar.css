@@ -1,0 +1,26 @@
+@import "bootstrap-sphinx.css";
+@import url("nobile-fontfacekit/stylesheet.css");
+@import url(https://fonts.googleapis.com/css?family=Comfortaa);
+
+body {
+    font-family: "Nobile", sans-serif;
+}
+
+a {
+color: rgb(140, 27, 30);
+text-decoration: none;
+overflow-wrap: break-word;
+}
+
+a:visited {
+color: #551A8B;
+}
+
+div.body h1,
+div.body h2,
+div.body h3,
+div.body h4,
+div.body h5,
+div.body h6 {
+    font-family: "Comfortaa", sans-serif;
+}
