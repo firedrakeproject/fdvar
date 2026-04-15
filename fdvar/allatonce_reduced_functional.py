@@ -4,7 +4,7 @@ from pyadjoint import (
 from pyadjoint.reduced_functional import AbstractReducedFunctional, ReducedFunctional
 from pyadjoint.enlisting import Enlist
 from pyop2.mpi import MPI
-from fdvar.adjoint import EnsembleTransformReducedFunctional
+from fdvar.adjoint import EnsembleTransform
 from firedrake.petsc import PETSc
 
 
@@ -54,7 +54,7 @@ class AllAtOnceReducedFunctional(AbstractReducedFunctional):
                 pause_annotation()
 
         self.propagator_rfs.extend(propagator_rfs)
-        self.Jm = EnsembleTransformReducedFunctional(
+        self.Jm = EnsembleTransform(
             functional, control, self.propagator_rfs)
 
     @property
