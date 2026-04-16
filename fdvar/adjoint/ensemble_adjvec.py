@@ -7,32 +7,36 @@ from firedrake.adjoint_utils.checkpointing import disk_checkpointing
 
 class EnsembleAdjVec(OverloadedType):
     """
-    A vector of :class:`pyadjoint.AdjFloat` distributed
-    over an :class:`.Ensemble`.
+    A vector of :class:`~pyadjoint.AdjFloat` distributed
+    over an :class:`~firedrake.Ensemble`.
 
-    Analagous to the :class:`.EnsembleFunction` and
-    :class:`.EnsembleCofunction` types but for :class:`~pyadjoint.AdjFloat`.
+    Analagous to the :class:`~firedrake.EnsembleFunction` and
+    :class:`~firedrake.EnsembleCofunction` types but for :class:`~pyadjoint.AdjFloat`.
 
-    Implements basic :class:`pyadjoint.OverloadedType` functionality
-    to be used as a :class:`pyadjoint.Control` or functional for the
-    :class:`~.ensemble_reduced_functional.EnsembleReducedFunctional` types.
+    Implements basic :class:`~pyadjoint.OverloadedType` functionality
+    to be used as a :class:`~pyadjoint.Control` or functional.
 
     Parameters
     ----------
-    subvec :
-        The local part of the vector.
+    subvec : list[AdjFloat] | EnsembleAdjVec
+        The local part of the vector. If ``subvec`` is another
+        ``EnsembleAdjVec`` then a copy will be created.
     ensemble :
-        The :class:`.Ensemble` communicator.
+        The :class:`firedrake.Ensemble` communicator.
+        Ignored if ``subvec`` is an ``EnsembleAdjVec``.
 
     See Also
     --------
-    :class:`~.Ensemble`
-    :class:`~.EnsembleFunction`
-    :class:`~.EnsembleCofunction`
-    :class:`~.EnsembleReducedFunctional`
+    :class:`~firedrake.Ensemble`
+    :class:`~firedrake.EnsembleFunction`
+    :class:`~firedrake.EnsembleCofunction`
+    :class:`~firedrake.EnsembleReducedFunctional`
     """
 
-    def __init__(self, subvec: list[AdjFloat], ensemble: Ensemble):
+    def __init__(self, subvec, ensemble: Ensemble | None = None):
+        if isinstance(subvec, type(self)):
+            ensemble = subvec.ensemble
+            subvec = subvec.subvec
         if not isinstance(ensemble, Ensemble):
             raise TypeError(
                 f"EnsembleAdjVec needs an Ensemble, not a {type(ensemble).__name__}")
@@ -40,8 +44,13 @@ class EnsembleAdjVec(OverloadedType):
             raise TypeError(
                 f"EnsembleAdjVec must be instantiated with a list of AdjFloats, not {subvec}")
         self._subvec = [AdjFloat(x) for x in subvec]
-        self.ensemble = ensemble
+        self._ensemble = ensemble
         OverloadedType.__init__(self)
+
+    @property
+    def ensemble(self) -> Ensemble:
+        """The :class:`~firedrake.Ensemble` that this vector is defined over."""
+        return self._ensemble
 
     @property
     def subvec(self) -> list[AdjFloat]:

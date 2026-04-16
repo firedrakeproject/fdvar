@@ -41,3 +41,10 @@ docs = [
   "sphinx_design",
   "sphinx-copybutton",
 ]
+demos = [
+   "irksome @ git+https://github.com/firedrakeproject/Irksome.git@master",
+]
+ci = [
+   "flake8",
+   "irksome @ git+https://github.com/firedrakeproject/Irksome.git@master",
+]

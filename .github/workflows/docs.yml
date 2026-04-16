@@ -1,10 +1,12 @@
 name: Build/deploy docs
 
 on:
+  # Run on pushes to main
   push:
     branches:
       - main
-  pull_request:
+  # pull_request:
+  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
@@ -25,21 +27,19 @@ jobs:
     name: Build docs
     runs-on: [self-hosted, Linux]
     container:
+      # TODO: Switch to latest firedrake release after 2026.4
       image: firedrakeproject/firedrake-vanilla-default:dev-main
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      ACTIVATE: venv-fdvar/bin/activate
     steps:
       - name: Fix HOME
         # For unknown reasons GitHub actions overwrite HOME to /github/home
         # which will break everything unless fixed
         # (https://github.com/actions/runner/issues/863)
         run: echo "HOME=/home/firedrake" >> "$GITHUB_ENV"
-
-      - name: Firedrake branch
-        run: |
-          cd /opt/firedrake
-          git checkout allatoncereducedfunctional
 
       - name: Install system dependencies
         run: |
@@ -50,21 +50,21 @@ jobs:
           path: fdvar-repo
 
       - name: Install fdvar
+        # pass '--system-site-packages' so Firedrake can be found
         run: |
-          : # Pass '--system-site-packages' so already installed packages can be found
           python3 -m venv --system-site-packages venv-fdvar
-          . venv-fdvar/bin/activate
+          . $ACTIVATE
           pip install --verbose './fdvar-repo[docs]'
 
       - name: Check documentation links
         if: github.ref == 'refs/heads/main'
         run: |
-          . venv-fdvar/bin/activate
+          . $ACTIVATE
           make -C fdvar-repo/docs linkcheck
 
       - name: Build docs
         run: |
-          . venv-fdvar/bin/activate
+          . $ACTIVATE
           cd fdvar-repo/docs
           make html
 

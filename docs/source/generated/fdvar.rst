@@ -21,14 +21,6 @@ fdvar.allatonce\_reduced\_functional module
    :show-inheritance:
    :undoc-members:
 
-fdvar.covariance module
------------------------
-
-.. automodule:: fdvar.covariance
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 fdvar.sc4dvar\_reduced\_functional module
 -----------------------------------------
 

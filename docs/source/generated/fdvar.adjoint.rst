@@ -12,10 +12,10 @@ fdvar.adjoint.ensemble\_adjvec module
    :show-inheritance:
    :undoc-members:
 
-fdvar.adjoint.ensemble\_reduced\_functional module
---------------------------------------------------
+fdvar.adjoint.ensemble\_operations module
+-----------------------------------------
 
-.. automodule:: fdvar.adjoint.ensemble_reduced_functional
+.. automodule:: fdvar.adjoint.ensemble_operations
    :members:
    :show-inheritance:
    :undoc-members:

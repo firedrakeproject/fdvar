@@ -5,6 +5,7 @@ from pyadjoint.optimization.tao_solver import (
     ReducedFunctionalAdjointMat
 )
 from firedrake.petsc import PETSc
+from fdvar import AllAtOnceReducedFunctional
 
 
 class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
@@ -60,7 +61,6 @@ class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
 
     @PETSc.Log.EventDecorator()
     def initialize(self, pc):
-        from firedrake.adjoint import AllAtOnceReducedFunctional
         pcname = type(self).__name__
 
         if isinstance(self.pmat, ReducedFunctionalTLMMat):
