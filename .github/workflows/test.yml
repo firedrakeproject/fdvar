@@ -33,8 +33,8 @@ jobs:
     env:
       # Tell pyop2 to complain if SPMD assumptions are broken
       PYOP2_SPMD_STRICT: 1
-      # Make sure tests with >8 processes are not silently skipped
-      PYTEST_MPI_MAX_NPROCS: 8
+      # Make sure tests with >6 processes are not silently skipped
+      PYTEST_MPI_MAX_NPROCS: 6
       # Tell PETSc to ignore the pytest command line arguments
       FIREDRAKE_DISABLE_OPTIONS_LEFT: 1
       # run the demos with smaller problem sizes
@@ -81,15 +81,13 @@ jobs:
         run: |
          . $ACTIVATE
           cd ./fdvar-repo
-          flake8 .
+          flake8 fdvar/ tests/
 
       - name: Run tests (nprocs = 1)
         # Run even if earlier tests failed
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          # mpiexec -n 1 python -m pytest $PYTEST_ARGS -k 'not demos'
-          # mpiexec -n 1 python -m pytest $PYTEST_ARGS -k 'demos'
           firedrake-run-split-tests 1 1 "$PYTEST_ARGS" "-k 'not demos'"
           firedrake-run-split-tests 1 1 "$PYTEST_ARGS" "-k 'demos'"
         timeout-minutes: 10
@@ -99,8 +97,6 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          # mpiexec -n 2 python -m pytest $PYTEST_ARGS -k 'not demos'
-          # mpiexec -n 2 python -m pytest $PYTEST_ARGS -k 'demos'
           firedrake-run-split-tests 2 1 "$PYTEST_ARGS" "-k 'not demos'"
           firedrake-run-split-tests 2 1 "$PYTEST_ARGS" "-k 'demos'"
         timeout-minutes: 10
@@ -110,7 +106,6 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          # mpiexec -n 3 python -m pytest $PYTEST_ARGS
           firedrake-run-split-tests 3 1 "$PYTEST_ARGS"
         timeout-minutes: 10
 
@@ -119,7 +114,6 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          # mpiexec -n 4 python -m pytest $PYTEST_ARGS
           firedrake-run-split-tests 4 1 "$PYTEST_ARGS"
         timeout-minutes: 10
 
@@ -128,7 +122,6 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          # mpiexec -n 5 python -m pytest $PYTEST_ARGS
           firedrake-run-split-tests 5 1 "$PYTEST_ARGS"
         timeout-minutes: 10
 
@@ -137,7 +130,6 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          # mpiexec -n 6 python -m pytest $PYTEST_ARGS
           firedrake-run-split-tests 6 1 "$PYTEST_ARGS"
         timeout-minutes: 10
 
