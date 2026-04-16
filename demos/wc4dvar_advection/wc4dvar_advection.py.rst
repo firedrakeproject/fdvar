@@ -185,7 +185,7 @@ We will go through how to set up and solve the WC4DVar system in Firedrake, with
   #. Specify a solver configuration and calculate an optimised :math:`\mathbf{x}`.
 
 First we import Firedrake, including the components from the adjoint module.
-As we will be generating some random noise, we set the random number generator seed to a fixed value..
+As we will be generating some random noise, we set the random number generator seed to a fixed value.
 
 ::
 
