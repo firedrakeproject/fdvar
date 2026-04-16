@@ -28,8 +28,8 @@ jobs:
     # Use Firedrake's Linux runners
     runs-on: [self-hosted, Linux]
     container:
-      # latest firedrake release
-      image: firedrakeproject/firedrake-vanilla-default:latest
+      # TODO: Switch to latest firedrake release after 2026.4
+      image: firedrakeproject/firedrake-vanilla-default:dev-main
     env:
       # Tell pyop2 to complain if SPMD assumptions are broken
       PYOP2_SPMD_STRICT: 1
