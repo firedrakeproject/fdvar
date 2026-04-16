@@ -4,21 +4,32 @@ from types import SimpleNamespace
 from contextlib import contextmanager
 
 from pyadjoint import (
-    ReducedFunctional, OverloadedType, Control, AdjFloat,
-    stop_annotating, get_working_tape, set_working_tape, annotate_tape)
+    ReducedFunctional,
+    OverloadedType,
+    Control,
+    AdjFloat,
+    stop_annotating,
+    get_working_tape,
+    set_working_tape,
+    annotate_tape,
+)
 from pyadjoint.reduced_functional import AbstractReducedFunctional
 from pyadjoint.enlisting import Enlist
 
-from firedrake.function import Function
-from firedrake.ensemble import EnsembleFunction, EnsembleFunctionSpace
+from firedrake import (
+    Function,
+    EnsembleFunction,
+    EnsembleFunctionSpace,
+    PETSc,
+)
 from firedrake.adjoint.covariance_operator import CovarianceOperatorBase
-from firedrake.petsc import PETSc
-
-from firedrake.adjoint.ensemble_reduced_functional import (
-    EnsembleReduceReducedFunctional, EnsembleTransformReducedFunctional)
 
 from fdvar.adjoint import (
-    ReducedFunctionalPipeline, EnsembleAdjVec)
+    EnsembleAdjVec,
+    EnsembleReduce,
+    EnsembleTransform,
+    ReducedFunctionalPipeline,
+)
 from fdvar.allatonce_reduced_functional import AllAtOnceReducedFunctional
 
 
@@ -338,8 +349,7 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
                 ensemble=self.ensemble)
 
             # reduction rf
-            Jsum = EnsembleReduceReducedFunctional(
-                AdjFloat(0.), Control(_adjvec._ad_init_zero()))
+            Jsum = EnsembleReduce(src=_adjvec._ad_init_zero())
             self.Jsum = Jsum
 
             # # # # # #
@@ -347,14 +357,14 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             # # # # # #
 
             # (JH : V^n -> U^n) = (x -> y - H(x))
-            JH = EnsembleTransformReducedFunctional(
+            JH = EnsembleTransform(
                 _y._ad_init_zero(),
                 Control(_x._ad_init_zero()),
                 self.observation_rfs)
             self.JH = JH
 
             # (JR : U^n -> R^n) = (x -> x^T R^{-1} x)
-            JR = EnsembleTransformReducedFunctional(
+            JR = EnsembleTransform(
                 _adjvec._ad_init_zero(),
                 Control(_y._ad_init_zero()),
                 observation_norms)
@@ -374,7 +384,7 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             self.JL = JL
 
             # (JDnorm : V^{n} -> R^{n}) = (x -> x^T <B,Q>^{-1} x)
-            JD = EnsembleTransformReducedFunctional(
+            JD = EnsembleTransform(
                 _adjvec._ad_init_zero(),
                 Control(_x._ad_init_zero()),
                 model_norms)
