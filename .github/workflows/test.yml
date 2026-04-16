@@ -90,16 +90,18 @@ jobs:
           . $ACTIVATE
           : # Use pytest-xdist here so we can have a single collated output (not possible
           : # for parallel tests)
-          firedrake-run-split-tests 1 1 "$PYTEST_ARGS"
-        timeout-minutes: 20
+          firedrake-run-split-tests 1 1 "$PYTEST_ARGS" -k "not demos"
+          firedrake-run-split-tests 1 1 "$PYTEST_ARGS" -k "demos"
+        timeout-minutes: 10
 
       - name: Run tests (nprocs = 2)
         # Run even if earlier tests failed
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          firedrake-run-split-tests 2 1 "$PYTEST_ARGS"
-        timeout-minutes: 20
+          firedrake-run-split-tests 2 1 "$PYTEST_ARGS" -k "not demos"
+          firedrake-run-split-tests 2 1 "$PYTEST_ARGS" -k "demos"
+        timeout-minutes: 10
 
       - name: Run tests (nprocs = 3)
         # Run even if earlier tests failed
@@ -107,7 +109,7 @@ jobs:
         run: |
           . $ACTIVATE
           firedrake-run-split-tests 3 1 "$PYTEST_ARGS"
-        timeout-minutes: 20
+        timeout-minutes: 10
 
       - name: Run tests (nprocs = 4)
         # Run even if earlier tests failed
@@ -115,7 +117,7 @@ jobs:
         run: |
           . $ACTIVATE
           firedrake-run-split-tests 4 1 "$PYTEST_ARGS"
-        timeout-minutes: 20
+        timeout-minutes: 10
 
       - name: Run tests (nprocs = 5)
         # Run even if earlier tests failed
@@ -123,7 +125,7 @@ jobs:
         run: |
           . $ACTIVATE
           firedrake-run-split-tests 5 1 "$PYTEST_ARGS"
-        timeout-minutes: 20
+        timeout-minutes: 10
 
       - name: Run tests (nprocs = 6)
         # Run even if earlier tests failed
@@ -131,7 +133,7 @@ jobs:
         run: |
           . $ACTIVATE
           firedrake-run-split-tests 6 1 "$PYTEST_ARGS"
-        timeout-minutes: 20
+        timeout-minutes: 10
 
       - name: Upload pytest log files
         uses: actions/upload-artifact@v4

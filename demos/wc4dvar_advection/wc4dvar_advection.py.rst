@@ -191,9 +191,9 @@ As we will be generating some random noise, we set the random number generator s
 
   import os
   import numpy as np
-  from irksome import Dt, TimeStepper, GaussLegendre
   from firedrake import *
   from firedrake.adjoint import *
+  from irksome import Dt, TimeStepper, GaussLegendre
 
   np.random.seed(13)
 
