@@ -99,8 +99,10 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          mpiexec -n 2 python -m pytest $PYTEST_ARGS -k 'not demos'
-          mpiexec -n 2 python -m pytest $PYTEST_ARGS -k 'demos'
+          # mpiexec -n 2 python -m pytest $PYTEST_ARGS -k 'not demos'
+          # mpiexec -n 2 python -m pytest $PYTEST_ARGS -k 'demos'
+          firedrake-run-split-tests 2 1 "$PYTEST_ARGS" "-k 'not demos'"
+          firedrake-run-split-tests 2 1 "$PYTEST_ARGS" "-k 'demos'"
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 3)
@@ -108,7 +110,8 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          mpiexec -n 3 python -m pytest $PYTEST_ARGS
+          # mpiexec -n 3 python -m pytest $PYTEST_ARGS
+          firedrake-run-split-tests 3 1 "$PYTEST_ARGS"
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 4)
@@ -116,7 +119,8 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          mpiexec -n 4 python -m pytest $PYTEST_ARGS
+          # mpiexec -n 4 python -m pytest $PYTEST_ARGS
+          firedrake-run-split-tests 4 1 "$PYTEST_ARGS"
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 5)
@@ -124,7 +128,8 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          mpiexec -n 5 python -m pytest $PYTEST_ARGS
+          # mpiexec -n 5 python -m pytest $PYTEST_ARGS
+          firedrake-run-split-tests 5 1 "$PYTEST_ARGS"
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 6)
@@ -132,7 +137,8 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          mpiexec -n 6 python -m pytest $PYTEST_ARGS
+          # mpiexec -n 6 python -m pytest $PYTEST_ARGS
+          firedrake-run-split-tests 6 1 "$PYTEST_ARGS"
         timeout-minutes: 10
 
       - name: Upload pytest log files
