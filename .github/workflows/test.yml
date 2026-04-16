@@ -90,8 +90,8 @@ jobs:
           . $ACTIVATE
           : # Use pytest-xdist here so we can have a single collated output (not possible
           : # for parallel tests)
-          firedrake-run-split-tests 1 1 "$PYTEST_ARGS" -k "not demos"
-          firedrake-run-split-tests 1 1 "$PYTEST_ARGS" -k "demos"
+          firedrake-run-split-tests 1 1 "$PYTEST_ARGS" -k 'not demos'
+          firedrake-run-split-tests 1 1 "$PYTEST_ARGS" -k 'demos'
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 2)
@@ -99,8 +99,8 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          firedrake-run-split-tests 2 1 "$PYTEST_ARGS" -k "not demos"
-          firedrake-run-split-tests 2 1 "$PYTEST_ARGS" -k "demos"
+          firedrake-run-split-tests 2 1 "$PYTEST_ARGS" -k 'not demos'
+          firedrake-run-split-tests 2 1 "$PYTEST_ARGS" -k 'demos'
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 3)
