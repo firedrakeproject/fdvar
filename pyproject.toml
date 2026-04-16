@@ -26,9 +26,9 @@ include = [
 
 [project.optional-dependencies]
 demos = [
-   "irksome @ git+https://github.com/firedrakeproject/Irksome.git@main",
+   "irksome @ git+https://github.com/firedrakeproject/Irksome.git@master",
 ]
 ci = [
    "flake8",
-   "irksome @ git+https://github.com/firedrakeproject/Irksome.git@main",
+   "irksome @ git+https://github.com/firedrakeproject/Irksome.git@master",
 ]
