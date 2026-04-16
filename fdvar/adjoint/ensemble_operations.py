@@ -10,6 +10,7 @@ from pyadjoint import (
     no_annotations,
 )
 
+from pyop2.mpi import MPI
 from firedrake import (
     Function,
     Cofunction,
@@ -119,7 +120,7 @@ def broadcast(ensemble: Ensemble,
     return dst
 
 
-class EnsembleBcastReduceBase(AbstractReducedFunctional):
+class EnsembleCommunicationBase(AbstractReducedFunctional):
     def __init__(self, ensemble: Ensemble, root: int | None = None):
         self._ensemble = ensemble
         self._root = root
@@ -193,7 +194,11 @@ class EnsembleBcastReduceBase(AbstractReducedFunctional):
         self.src.block_variable.reset_variables("adjoint")
         self.src.block_variable.add_adj_output(out)
 
-        return self.controls[0].get_derivative(apply_riesz=apply_riesz)
+        if apply_riesz:
+            return self.controls[0].control._ad_convert_riesz(
+                out, riesz_map=self.controls[0].riesz_map)
+        else:
+            return out
 
     @no_annotations
     def hessian(self, m_dot, hessian_input=None,
@@ -216,10 +221,14 @@ class EnsembleBcastReduceBase(AbstractReducedFunctional):
         self.src.block_variable.reset_variables("hessian")
         self.src.block_variable.add_hessian_output(out)
 
-        return self.controls[0].get_hessian(apply_riesz=apply_riesz)
+        if apply_riesz:
+            return self.controls[0].control._ad_convert_riesz(
+                out, riesz_map=self.controls[0].riesz_map)
+        else:
+            return out
 
 
-class EnsembleReduce(EnsembleBcastReduceBase):
+class EnsembleReduce(EnsembleCommunicationBase):
     def __init__(self, src: EnsembleType, root: int | None = None):
         # TODO: some type validation
 
@@ -244,7 +253,7 @@ class EnsembleReduce(EnsembleBcastReduceBase):
             self.ensemble, src=src, dst=out, root=self.root)
 
 
-class EnsembleBcast(EnsembleBcastReduceBase):
+class EnsembleBcast(EnsembleCommunicationBase):
     def __init__(self, dst: EnsembleType, root: int | None = None):
         # TODO: some type validation
 
@@ -421,43 +430,66 @@ class EnsembleTransform(AbstractReducedFunctional):
         return local_groups
 
 
-class EnsembleShift(AbstractReducedFunctional):
+class EnsembleShift(EnsembleCommunicationBase):
     def __init__(self, x: EnsembleType, ensemble: Ensemble):
-        pass
+        super().__init__(_ensemble(x))
+        self._src = x._ad_init_zero()
+        self._dst = x._ad_init_zero()
 
     @property
-    def controls(self) -> list[Control]:
-        return self._controls
-
-    def functional(self) -> EnsembleType:
-        return self._functional
+    def src(self) -> EnsembleType:
+        return self._src
 
     @property
-    def ensemble(self) -> Ensemble:
-        return self._ensemble
-
-    @no_annotations
-    def __call__(self, values: EnsembleType) -> EnsembleType:
-        pass
-
-    @no_annotations
-    def tlm(self, m_dot: EnsembleType) -> EnsembleType:
-        pass
-
-    @no_annotations
-    def derivative(self, adj_input: EnsembleType,
-                   apply_riesz: bool = False) -> EnsembleType:
-        pass
-
-    @no_annotations
-    def hessian(self, m_dot: EnsembleType,
-                hessian_input: EnsembleType,
-                evaluate_tlm: bool = True,
-                apply_riesz: bool = False) -> EnsembleType:
-        pass
+    def dst(self) -> EnsembleType:
+        return self._dst
 
     def forward(self, x: EnsembleType) -> EnsembleType:
-        pass
+        return self._shift(x, 'forward')
 
     def backward(self, x: EnsembleType) -> EnsembleType:
-        pass
+        return self._shift(x, 'backward')
+
+    def _shift(self, x: EnsembleType, direction: str) -> EnsembleType:
+        xnew = x._ad_init_zero()
+        xold = x
+        xn = xnew.subfunctions
+        xo = xold.subfunctions
+
+        forward = direction == 'forward'
+
+        rank = self.ensemble.ensemble_rank
+        last_rank = self.ensemble.ensemble_size - 1
+
+        # receive/send from next or previous rank?
+        src = rank + (-1 if forward else 1)
+        dst = rank + (1 if forward else -1)
+        # receive into/send from first of last local function?
+        send_idx = -1 if forward else 0
+        recv_idx = 0 if forward else -1
+        # who has to only send or only receive?
+        first_rank = 0 if forward else last_rank
+        last_rank = last_rank if forward else 0
+
+        # deal with the local shuffle
+        if forward:
+            for i in range(1, len(xo)):
+                xn[i].assign(xo[i-1])
+        else:
+            for i in range(len(xo)-1):
+                xn[i].assign(xo[i+1])
+
+        # send halo
+        if rank != last_rank:
+            self.ensemble.isend(
+                xo[send_idx], dest=dst, tag=dst)
+
+        # receive halo or blank out initial
+        if rank == first_rank:  # blank out ics
+            xn[recv_idx].assign(0)
+        else:
+            recv_reqs = self.ensemble.irecv(
+                xn[recv_idx], source=src, tag=rank)
+            MPI.Request.Waitall(recv_reqs)
+
+        return xnew

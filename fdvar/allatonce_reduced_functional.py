@@ -1,10 +1,14 @@
+from functools import partial
 from pyadjoint import (
     Control, OverloadedType, stop_annotating, set_working_tape,
     annotate_tape, continue_annotation, pause_annotation)
 from pyadjoint.reduced_functional import AbstractReducedFunctional, ReducedFunctional
 from pyadjoint.enlisting import Enlist
-from pyop2.mpi import MPI
-from fdvar.adjoint import EnsembleTransform
+from fdvar.adjoint import (
+    EnsembleTransform,
+    EnsembleShift,
+    ReducedFunctionalPipeline,
+)
 from firedrake.petsc import PETSc
 
 
@@ -25,13 +29,15 @@ class AllAtOnceReducedFunctional(AbstractReducedFunctional):
         self.trank = self.ensemble.ensemble_rank
         self.last_rank = self.ensemble.ensemble_size - 1
 
-        # 1. halo swap:
+        # L = (I - M o S)
+        #
+        # 1. S: halo swap:
         # Jhalo: [x0, x1, x2, ...] -> [0, x0, x1, ...]
-
-        # 2. propagator
+        #
+        # 2. M: propagator
         # Jm: [0, x0, x1, ...] -> [xb, Mx0, Mx1, ...]
-
-        # 3. misfit
+        #
+        # 3. I - (): misfit
         # J: [x0-xb, x1-Mx0, x2-Mx1, ...]
 
         nlocal_stages = len(propagator_rfs)
@@ -57,6 +63,10 @@ class AllAtOnceReducedFunctional(AbstractReducedFunctional):
         self.Jm = EnsembleTransform(
             functional, control, self.propagator_rfs)
 
+        self.shift = EnsembleShift(functional, self.ensemble)
+
+        self.MS = ReducedFunctionalPipeline(self.shift, self.Jm)
+
     @property
     def controls(self):
         return self._controls
@@ -67,23 +77,22 @@ class AllAtOnceReducedFunctional(AbstractReducedFunctional):
         x = values[0] if isinstance(values, (list, tuple)) else values
         self.controls[0].update(x)
 
-        return x - self.Jm(self.halos(x, 'forward'))
+        return x - self.MS(x)
 
     @stop_annotating()
     @PETSc.Log.EventDecorator()
     def derivative(self, adj_input: float = 1.0, apply_riesz: bool = False):
         adj = adj_input[0] if isinstance(adj_input, (list, tuple)) else adj_input
 
-        dJm = self.Jm.derivative(-adj, apply_riesz=False)
-        dJm = adj_input + self.halos(dJm, 'backward')
-        return self._apply_riesz(dJm, apply_riesz)
+        SM = partial(self.MS.derivative, apply_riesz=False)
+        return self._apply_riesz(adj + SM(-adj), apply_riesz=apply_riesz)
 
     @stop_annotating()
     @PETSc.Log.EventDecorator()
     def tlm(self, m_dot: OverloadedType):
         dx = m_dot[0] if isinstance(m_dot, (list, tuple)) else m_dot
 
-        return dx - self.Jm.tlm(self.halos(dx, 'forward'))
+        return dx - self.MS.tlm(dx)
 
     @stop_annotating()
     @PETSc.Log.EventDecorator()
@@ -91,12 +100,15 @@ class AllAtOnceReducedFunctional(AbstractReducedFunctional):
                 evaluate_tlm: bool = True, apply_riesz: bool = False):
         if evaluate_tlm:
             self.tlm(m_dot)
-        hess = hessian_input[0] if isinstance(hessian_input, (list, tuple)) else hessian_input
+        dh = hessian_input[0] if isinstance(hessian_input, (list, tuple)) else hessian_input
 
-        d2J = self.Jm.hessian(m_dot=None, hessian_input=-hess,
-                              evaluate_tlm=False, apply_riesz=False)
-        d2J = hessian_input + self.halos(d2J, 'backward')
-        return self._apply_riesz(d2J, apply_riesz)
+        SM = partial(self.MS.hessian,
+                     m_dot=None,
+                     evaluate_tlm=False,
+                     apply_riesz=False)
+
+        return self._apply_riesz(dh + SM(hessian_input=-dh),
+                                 apply_riesz=apply_riesz)
 
     def _apply_riesz(self, adj, apply_riesz=False):
         if apply_riesz:
@@ -104,45 +116,3 @@ class AllAtOnceReducedFunctional(AbstractReducedFunctional):
                 adj, riesz_map=self.controls[0].riesz_map)
         else:
             return adj
-
-    @PETSc.Log.EventDecorator()
-    def halos(self, x, direction):
-        xnew = x._ad_init_zero()
-        xold = x
-        xn = xnew.subfunctions
-        xo = xold.subfunctions
-
-        forward = direction == 'forward'
-
-        # receive/send from next or previous rank?
-        src = self.trank + (-1 if forward else 1)
-        dst = self.trank + (1 if forward else -1)
-        # receive into/send from first of last local function?
-        send_idx = -1 if forward else 0
-        recv_idx = 0 if forward else -1
-        # who has to only send or only receive?
-        first_rank = 0 if forward else self.last_rank
-        last_rank = self.last_rank if forward else 0
-
-        # deal with the local shuffle
-        if forward:
-            for i in range(1, len(xo)):
-                xn[i].assign(xo[i-1])
-        else:
-            for i in range(len(xo)-1):
-                xn[i].assign(xo[i+1])
-
-        # send halo
-        if self.trank != last_rank:
-            self.ensemble.isend(
-                xo[send_idx], dest=dst, tag=dst)
-
-        # receive halo or blank out initial
-        if self.trank == first_rank:  # blank out ics
-            xn[recv_idx].assign(0)
-        else:
-            recv_reqs = self.ensemble.irecv(
-                xn[recv_idx], source=src, tag=self.trank)
-            MPI.Request.Waitall(recv_reqs)
-
-        return xnew
