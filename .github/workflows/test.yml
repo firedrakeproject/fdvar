@@ -40,7 +40,7 @@ jobs:
       # run the demos with smaller problem sizes
       FIREDRAKE_CI: 1
       # Common arguments for pytest.
-      PYTEST_ARGS: -m parallel[match] --durations=10 --timeout=180 --timeout-method=thread -o faulthandler_timeout=200 --verbose fdvar-repo/tests/
+      PYTEST_ARGS: --durations=10 --timeout=180 --timeout-method=thread -o faulthandler_timeout=200 --verbose fdvar-repo/tests/
       # venv activation script
       ACTIVATE: venv-fdvar/bin/activate
     steps:
@@ -90,8 +90,8 @@ jobs:
           . $ACTIVATE
           : # Use pytest-xdist here so we can have a single collated output (not possible
           : # for parallel tests)
-          mpiexec -n 1 python -m pytest "$PYTEST_ARGS" -k 'not demos'
-          mpiexec -n 1 python -m pytest "$PYTEST_ARGS" -k 'demos'
+          mpiexec -n 1 python -m pytest -m parallel[match] "$PYTEST_ARGS" -k 'not demos'
+          mpiexec -n 1 python -m pytest -m parallel[match] "$PYTEST_ARGS" -k 'demos'
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 2)
@@ -99,8 +99,8 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          mpiexec -n 2 python -m pytest "$PYTEST_ARGS" -k 'not demos'
-          mpiexec -n 2 python -m pytest "$PYTEST_ARGS" -k 'demos'
+          mpiexec -n 2 python -m pytest -m parallel[match] "$PYTEST_ARGS" -k 'not demos'
+          mpiexec -n 2 python -m pytest -m parallel[match] "$PYTEST_ARGS" -k 'demos'
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 3)
@@ -108,7 +108,7 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          mpiexec -n 3 python -m pytest "$PYTEST_ARGS"
+          mpiexec -n 3 python -m pytest -m parallel[match] "$PYTEST_ARGS"
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 4)
@@ -116,7 +116,7 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          mpiexec -n 4 python -m pytest "$PYTEST_ARGS"
+          mpiexec -n 4 python -m pytest -m parallel[match] "$PYTEST_ARGS"
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 5)
@@ -124,7 +124,7 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          mpiexec -n 5 python -m pytest "$PYTEST_ARGS"
+          mpiexec -n 5 python -m pytest -m parallel[match] "$PYTEST_ARGS"
         timeout-minutes: 10
 
       - name: Run tests (nprocs = 6)
@@ -132,7 +132,7 @@ jobs:
         if: success() || steps.install.conclusion == 'success'
         run: |
           . $ACTIVATE
-          mpiexec -n 6 python -m pytest "$PYTEST_ARGS"
+          mpiexec -n 6 python -m pytest -m parallel[match] "$PYTEST_ARGS"
         timeout-minutes: 10
 
       - name: Upload pytest log files
