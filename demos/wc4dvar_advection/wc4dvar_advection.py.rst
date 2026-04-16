@@ -189,6 +189,7 @@ As we will be generating some random noise, we set the random number generator s
 
 ::
 
+  import os
   import numpy as np
   from firedrake import *
   from firedrake.adjoint import *
@@ -248,10 +249,18 @@ The control :math:`\mathbf{x}` is a timeseries distributed in time over the ``En
 For this we use an :class:`~firedrake.ensemble.ensemble_functionspace.EnsembleFunctionSpace` which represents a mixed function space with each component living on a particular ensemble member.
 To initialise the ``EnsembleFunctionSpace`` we just need the ``Ensemble`` and a list of ``FunctionSpace`` for the local components.
 We split the number of observation stages ``N`` equally across the ensemble members, and include an extra component on the first member for the initial condition :math:`x_{0}`.
+The observations are taken at intervals of :math:`T_{\textrm{stage}}=n_{t}\Delta t`, where :math:`n_{t}` is the number of timesteps between each observation.
 
 ::
 
   N = 8
+  Tstage = 1e-1
+  nt = 3
+
+  if os.getenv("FIREDRAKE_CI") == "1":
+      N = 4
+      Tstage = 2e-2
+      nt = 2
 
   nlocal_stages = N//ensemble_size
   nlocal_spaces = nlocal_stages + int(ensemble_rank == 0)
@@ -262,14 +271,11 @@ We split the number of observation stages ``N`` equally across the ensemble memb
 
 We construct the propagator :math:`\mathcal{M}` for the advection-diffusion scheme, using `Irksome <https://www.firedrakeproject.org/Irksome>`_ to provide the time integrator.
 The forcing term :math:`g(t)` is rather involved, but just ensures that there is some non-trivial variation in the solution and prevents it decaying to zero over long time periods due to the diffusion.
-The observations are taken at intervals of :math:`T_{\textrm{stage}}=n_{t}\Delta t`, where :math:`n_{t}` is the number of timesteps between each observation.
 
 ::
 
-  Tstage = 1e-1
-  nt = 3
-
   dt = Function(Vr).assign(Tstage/nt)
+
   t = Function(Vr).zero()
   z, = SpatialCoordinate(mesh)
 
@@ -406,7 +412,7 @@ After running the local part of the timeseries on each ensemble member, this all
   else:
       y = []
 
-  t.assign(0)
+  t.zero()
   with ensemble.sequential(state=xt, t=t) as ctx:
       t.assign(ctx.t)
       xt.assign(ctx.state)
@@ -456,7 +462,7 @@ For each ``stage``, we integrate forward from ``stage.control`` (i.e. :math:`x_{
 
 ::
 
-  t.assign(0.0)
+  t.zero()
   with Jhat.recording_stages(t=t) as stages:
       for stage, ctx in stages:
           t.assign(ctx.t)
@@ -613,6 +619,10 @@ Now we set up the full solver options in the ``'tao_parameters'`` below.
           },
       }
   }
+
+  if os.getenv("FIREDRAKE_CI") == "1":
+      tao_parameters["tao_gttol"] = 0.9
+      tao_parameters["tao_nls"]["wcsaddle"]["ksp_rtol"] = 1e-1
 
 Now we have a reduced functional and a set of TAO parameters we can solve the optimisation problem using Pyadjoint's :class:`~pyadjoint.TAOSolver`.
 
