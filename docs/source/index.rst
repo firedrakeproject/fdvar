@@ -48,9 +48,9 @@ Installation
 Getting Started
 ---------------
 
-* **Firedrake:** To get started with Firedrake check out the `introductory demos <https://www.firedrakeproject.org/documentation.html#introductory-tutorials>`_.
-* **fdvar:** The best place to get started with ``fdvar`` is the :ref:`demos`.
-* **Irksome:** The Irksome website has a range of `tutorials <https://www.firedrakeproject.org/Irksome/#tutorials>`_
+* To get started with Firedrake check out the `introductory demos <https://www.firedrakeproject.org/documentation.html#introductory-tutorials>`_.
+* The best place to get started with ``fdvar`` is the :ref:`demos`.
+* A complete listing of the ``fdvar`` library can be found in the :py:mod:`API documentation <fdvar>`.
 
 .. _demos:
 
@@ -67,14 +67,8 @@ A Python script is generated for each demo and is linked at the bottom of the de
 Getting in touch
 ----------------
 
-Github issues. Firedrake slack channel.
-
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
-
-   generated/modules.rst
+Please get in touch with any questions related to ``fdvar`` by raising an issue on the `GitHub repository <https://github.com/firedrakeproject/fdvar/>`_.
+For more general Firedrake queries please see the `Firedrake contact page <https://www.firedrakeproject.org/contact/>`_
 
 Contributors
 ------------
@@ -86,3 +80,9 @@ Contributors
 * `David A. Ham <https://profiles.imperial.ac.uk/david.ham>`_ (Department of Mathematics, Imperial College London)
 
 * `Jemima M. Tabeart <https://jemimat.github.io/>`_ (Department of Mathematics and Computer Science, TU Eindhoven)
+
+.. toctree::
+   :maxdepth: 3
+   :caption: Contents:
+
+   generated/modules.rst
