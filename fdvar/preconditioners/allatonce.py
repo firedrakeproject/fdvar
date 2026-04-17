@@ -12,7 +12,7 @@ class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
     """
     Python preconditioner to approximate the inverse
     of the tangent linear or adjoint model of an
-    :class:`~firedrake.adjoint.allatonce_reduced_functional.AllAtOnceReducedFunctional`.
+    :class:`.AllAtOnceReducedFunctional`.
 
     The tangent linear :math:`L` (or adjoint :math:`L^{T}`) is block lower
     (upper) triangular so can be solved exactly with forward (backward)
@@ -34,33 +34,31 @@ class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
 
     1. :math:`M=I`. Approximating the propagator with identity is equivalent to
        computing an inclusive sum of the right hand side.
-    2. :math:`M=0`. This "approximation" is equivalent to
-       ``"pc_type": "none"``. This option is just to allow
-       easily switching between the three common approximations with a single option.
+    2. :math:`M=0`. This "approximation" is equivalent to ``-pc_type none``.
 
-    Use the ``-pc_aaogs_model`` option to select which approximation to use.
+    Use the ``-pc_aaogs_type`` option to select which approximation to use.
 
-    PETSc Options
-    -------------
-    * ``-pc_aaogs_type ('model'|'identity'|'zero')``
-      - Whether to use M or to approximate it with I or 0.
+    **PETSc Options**
+
+    * ``-pc_aaogs_type (model|identity|zero)``
+      - Whether to use :math:`M` or to approximate it with :math:`I` or :math:`0`.
 
     Notes
     -----
-    The ``Mat`` for this PC must be a
-    :func:`~pyadjoint.optimization.tao_solver.ReducedFunctionalMat` for an
-    :class:`~firedrake.adjoint.allatonce_reduced_functional.AllAtOnceReducedFunctional`.
+    The :class:`~petsc4py.PETSc.Mat` for this PC must be a
+    :func:`~pyadjoint.optimization.tao_solver.ReducedFunctionalMat`
+    for an :class:`.AllAtOnceReducedFunctional`.
 
     See Also
     --------
-    ~firedrake.adjoint.allatonce_reduced_functional.AllAtOnceReducedFunctional
-    ~firedrake.preconditioners.adjoint.wc4dvar.WC4DVarSchurPC
+    .AllAtOnceReducedFunctional
+    .WC4DVarSchurPC
     """
     prefix = "aaogs_"
     needs_python_pmat = True
 
     @PETSc.Log.EventDecorator()
-    def initialize(self, pc):
+    def initialize(self, pc: PETSc.PC):
         pcname = type(self).__name__
 
         if isinstance(self.pmat, ReducedFunctionalTLMMat):
@@ -109,7 +107,7 @@ class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
         self.nlocal_stages = Jhat.nlocal_stages
 
     @PETSc.Log.EventDecorator()
-    def apply(self, pc, x, y):
+    def apply(self, pc: PETSc.PC, x: PETSc.Vec, y: PETSc.Vec):
         if self.propagator_type == "zero":
             x.copy(y)
             return
@@ -120,7 +118,7 @@ class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
             self.apply_adjoint(pc, x, y)
 
     @PETSc.Log.EventDecorator()
-    def applyTranspose(self, pc, x, y):
+    def applyTranspose(self, pc: PETSc.PC, x: PETSc.Vec, y: PETSc.Vec):
         if self.propagator_type == "zero":
             x.copy(y)
             return
@@ -131,7 +129,7 @@ class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
             self.apply_tlm(pc, x, y)
 
     @PETSc.Log.EventDecorator()
-    def apply_tlm(self, pc, x, y):
+    def apply_tlm(self, pc: PETSc.PC, x: PETSc.Vec, y: PETSc.Vec):
         ensemble = self.ensemble
         rank = ensemble.ensemble_rank
         is_first = rank == 0
@@ -169,7 +167,7 @@ class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
             yvec.copy(y)
 
     @PETSc.Log.EventDecorator()
-    def apply_adjoint(self, pc, x, y):
+    def apply_adjoint(self, pc: PETSc.PC, x: PETSc.Vec, y: PETSc.Vec):
         ensemble = self.ensemble
         rank = ensemble.ensemble_rank
         is_last = rank == ensemble.ensemble_size - 1
@@ -207,12 +205,12 @@ class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
             yvec.copy(y)
 
     @PETSc.Log.EventDecorator()
-    def update(self, pc):
+    def update(self, pc: PETSc.PC):
         # The Mat context is responsible care of making sure
         # that the ReducedFunctional for each M is up to date.
         pass
 
-    def view(self, pc, viewer=None):
+    def view(self, pc: PETSc.PC, viewer: PETSc.Viewer | None = None):
         if hasattr(self, "Jhat"):
             viewer.printfASCII(
                 "PC to apply the inverse of an AllAtOnceReducedFunctional.\n")

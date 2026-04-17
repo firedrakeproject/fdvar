@@ -63,6 +63,15 @@ apidoc_modules = [
 ]
 
 intersphinx_mapping = {
+    'FIAT': ('https://firedrakeproject.org/fiat', None),
+    # TODO: Release firedrake website
+    'firedrake': ('https://firedrakeproject.org/firedrake', None),
+    'h5py': ('http://docs.h5py.org/en/latest/', None),
+    'mpi4py': ('https://mpi4py.readthedocs.io/en/stable/', None),
+    'petsctools': ('https://firedrakeproject.org/petsctools/', None),
+    'petsc4py': ('https://petsc.org/release/petsc4py/', None),
+    'pyadjoint': ('https://pyadjoint.org/', None),
+    'pyop2': ('https://op2.github.io/PyOP2', None),
     'python': ('https://docs.python.org/3', None),
-    'firedrake': ('https://firedrakeproject.org', None)
+    'ufl': ('https://docs.fenicsproject.org/ufl/main/', None),
 }
