@@ -11,7 +11,7 @@ from firedrake.adjoint import CovarianceMat
 from fdvar.wc4dvar_reduced_functional import WC4DVarReducedFunctional
 
 
-def getSubWC4DVarSaddleMat(mat, sub: str | None = None):
+def getSubWC4DVarSaddleMat(mat: PETSc.Mat, sub: str | None = None):
     """
     Return a sub matrix of the saddle point MatNest.
     Options are 'D', 'R', 'L', 'LT', 'H', 'HT',
@@ -19,8 +19,8 @@ def getSubWC4DVarSaddleMat(mat, sub: str | None = None):
 
     Parameters
     ----------
-    mat : PETSc.Mat
-        The MatNest for the saddle point system returned by
+    mat :
+        The ``MatNest`` for the saddle point system returned by
         :func:`WC4DVarSaddleMat`.
 
     sub :
@@ -28,12 +28,13 @@ def getSubWC4DVarSaddleMat(mat, sub: str | None = None):
 
     Returns
     -------
-    tuple[PETSc.Mat] | PETSc.Mat :
+    tuple[~petsc4py.PETSc.Mat] | ~petsc4py.PETSc.Mat :
         The sub Mat requested or a tuple of all sub Mats.
 
     See Also
     --------
     WC4DVarSaddleMat
+    WC4DVarSaddlePC
     """
     idx = {
         'D': (0, 0),
@@ -51,9 +52,10 @@ def getSubWC4DVarSaddleMat(mat, sub: str | None = None):
 
 
 @PETSc.Log.EventDecorator()
-def WC4DVarSaddleMat(Jhat):
+def WC4DVarSaddleMat(Jhat: WC4DVarReducedFunctional):
     """
-    PETSc MatNest for the saddle point formulation of Weak Constraint 4DVar.
+    :class:`~petsc4py.PETSc.Mat` of type ``MatNest`` for the
+    saddle point formulation of Weak Constraint 4DVar.
 
     .. math::
 
@@ -71,26 +73,26 @@ def WC4DVarSaddleMat(Jhat):
 
     Parameters
     ----------
-    Jhat : WC4DVarReducedFunctional
-        :class:`~firedrake.adjoint.fourdvar_reduced_functional.WC4DVarReducedFunctional`
-        to construct the saddle point matrix from.
+    Jhat
+        The reduced functional to construct the saddle point matrix from.
 
     Returns
     -------
-    PETSc.Mat :
-        The 3x3 PETSc MatNest for the saddle point system.
+    ~petsc4py.PETSc.Mat :
+        The 3x3 ``MatNest`` for the saddle point system.
 
     Raises
     ------
-    TypeError : If ``Jhat`` is not a :class:`~.firedrake.adjoint.fourdvar_reduced_functional.WC4DVarReducedFunctional`.
+    TypeError :
+        If ``Jhat`` is not a :class:`~fdvar.WC4DVarReducedFunctional`.
 
     See Also
     --------
     getSubWC4DVarSaddleMat
     WC4DVarSaddleKSP
     WC4DVarSaddlePC
-    ~firedrake.adjoint.fourdvar_reduced_functional.WC4DVarReducedFunctional
-    ~firedrake.adjoint.allatonce_reduced_functional.AllAtOnceReducedFunctional
+    ~fdvar.WC4DVarReducedFunctional
+    ~fdvar.AllAtOnceReducedFunctional
     """
     # TODO: petsctools.cite("Fisher2017")
 
@@ -171,21 +173,21 @@ def WC4DVarSaddleMat(Jhat):
 
 
 @PETSc.Log.EventDecorator()
-def WC4DVarSaddleKSP(Jhat, Jphat=None, *,
-                     solver_parameters: dict | None = None,
+def WC4DVarSaddleKSP(Jhat: WC4DVarReducedFunctional,
+                     Jphat: WC4DVarReducedFunctional | None = None,
+                     *, solver_parameters: dict | None = None,
                      options_prefix: str | None = None):
     """
-    PETSc KSP for the saddle point formulation of Weak Constraint 4DVar.
+    A :class:`~.petsc4py.PETSc.KSP` for the saddle point formulation of Weak Constraint 4DVar.
 
     Parameters
     ----------
-    Jhat : WC4DVarReducedFunctional
-        :class:`~firedrake.adjoint.fourdvar_reduced_functional.WC4DVarReducedFunctional`
-        to use to construct the :func:`.WC4DVarSaddleMat` for the Amat operator.
-    Jphat : WC4DVarReducedFunctional | None
-        :class:`~firedrake.adjoint.fourdvar_reduced_functional.WC4DVarReducedFunctional`
-        to construct the :func:`.WC4DVarSaddleMat` for the Pmat operator.
-        If not provided then ``Jhat`` is used for both Amat and Pmat.
+    Jhat :
+        The reduced functional to construct the :func:`.WC4DVarSaddleMat`.
+    Jphat :
+        The reduced functional to construct a  :func:`.WC4DVarSaddleMat`
+        for the ``Pmat`` operator of the :class:`~petsc4py.PETSc.KSP`.
+        If not provided then ``Jhat`` is used for both ``Amat`` and ``Pmat``.
     solver_parameters :
         PETSc options for the KSP.
     options_prefix :
@@ -193,18 +195,19 @@ def WC4DVarSaddleKSP(Jhat, Jphat=None, *,
 
     Returns
     -------
-    PETSc.KSP :
+    ~petsc4py.PETSc.KSP :
         The KSP for the saddle point system.
 
     Raises
     ------
-    TypeError : If ``Jhat`` is not a :class:`~.firedrake.adjoint.fourdvar_reduced_functional.WC4DVarReducedFunctional`.
+    TypeError :
+        If ``Jhat`` is not a :class:`~fdvar.WC4DVarReducedFunctional`.
 
     See Also
     --------
     WC4DVarSaddleMat
     WC4DVarSaddlePC
-    ~firedrake.adjoint.fourdvar_reduced_functional.WC4DVarReducedFunctional
+    ~fdvar.WC4DVarReducedFunctional
     """
     amat = WC4DVarSaddleMat(Jhat)
 
@@ -243,17 +246,29 @@ class WC4DVarSaddlePC(petsctools.PCBase):
         b \\\\ d \\\\ 0
       \\end{pmatrix}
 
-    This PC acts on a :class:`~pyadjoint.optimization.tao_solver.ReducedFunctionalHessianMat` for a
-    :class:`~firedrake.adjoint.fourdvar_reduced_functional.WC4DVarReducedFunctional`.
-    It solves the larger saddle point system and returns just the :math:`\\delta x` part of the solution.
+    This PC acts on a :func:`~pyadjoint.optimization.tao_solver.ReducedFunctionalMat`
+    for a :class:`~fdvar.WC4DVarReducedFunctional`. It solves the larger saddle point
+    system and returns just the :math:`\\delta x` part of the solution.
 
-    The (3, 3) Schur complement of the saddle point system is
-    the WC4DVar Hessian :math:`L^{T}D^{-1}L +H^{T}R^{-1}H`
-    and is often approximated with the :class:`WC4DVarSchurPC`.
+    **PETSc Options**
 
-    PETSc Options
-    -------------
-    * ``-wcsaddle`` - Options for the KSP for the saddle point system.
+    * ``-wcsaddle`` - Options for the :class:`~petsc4py.PETSc.KSP` for the saddle point system.
+
+    Notes
+    -----
+
+    The :math:`(3, 3)` Schur complement of the saddle point system is the WC4DVar
+    Hessian :math:`L^{T}D^{-1}L+H^{T}R^{-1}H` and is often approximated with the
+    :class:`~fdvar.WC4DVarSchurPC`.
+    `PCFieldsplit <https://petsc.org/release/manualpages/PC/PCFIELDSPLIT/>`_ can be
+    used to eliminate down to the :math:`\\delta x` component with the following options:
+
+    .. code:: none
+
+      -pc_type fieldsplit
+      -pc_fieldsplit_type schur
+      -pc_fieldsplit_0_fields 0,1
+      -pc_fieldsplit_1_fields 2
 
     References
     ----------
@@ -263,8 +278,8 @@ class WC4DVarSaddlePC(petsctools.PCBase):
 
     See Also
     --------
-    ~firedrake.adjoint.fourdvar_reduced_functional.WC4DVarReducedFunctional
-    WC4DVarSchurPC
+    ~fdvar.WC4DVarReducedFunctional
+    ~fdvar.WC4DVarSchurPC
     """
     needs_python_amat = True
     needs_python_pmat = True
@@ -272,7 +287,7 @@ class WC4DVarSaddlePC(petsctools.PCBase):
     prefix = "wcsaddle_"
 
     @PETSc.Log.EventDecorator()
-    def initialize(self, pc):
+    def initialize(self, pc: PETSc.PC):
         # TODO: petsctools.cite("Fisher2017")
         super().initialize(pc)
 
@@ -343,7 +358,7 @@ class WC4DVarSaddlePC(petsctools.PCBase):
         return v
 
     @PETSc.Log.EventDecorator()
-    def apply(self, pc, x, y):
+    def apply(self, pc: PETSc.PC, x: PETSc.Vec, y: PETSc.Vec):
         self.sol.zeroEntries()
         self.rhs.zeroEntries()
 
@@ -376,7 +391,7 @@ class WC4DVarSaddlePC(petsctools.PCBase):
         self.sol.getNestSubVecs()[2].copy(result=y)
 
     @PETSc.Log.EventDecorator()
-    def update(self, pc):
+    def update(self, pc: PETSc.PC):
         # The mat should have taken care of updating
         # the Amat but we should check if the Pmat
         # needs updating.
@@ -387,7 +402,7 @@ class WC4DVarSaddlePC(petsctools.PCBase):
                 self.Jphat(self.Jhat.control.data())
         self.saddle_ksp.setUp()
 
-    def view(self, pc, viewer=None):
+    def view(self, pc: PETSc.PC, viewer: PETSc.Viewer | None = None):
         super().view(pc, viewer)
         if viewer is None:
             return
