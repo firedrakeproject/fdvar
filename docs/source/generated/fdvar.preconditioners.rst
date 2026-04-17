@@ -1,6 +1,11 @@
 fdvar.preconditioners package
 =============================
 
+.. automodule:: fdvar.preconditioners
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 Submodules
 ----------
 
@@ -24,14 +29,6 @@ fdvar.preconditioners.wcschur module
 ------------------------------------
 
 .. automodule:: fdvar.preconditioners.wcschur
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-Module contents
----------------
-
-.. automodule:: fdvar.preconditioners
    :members:
    :show-inheritance:
    :undoc-members:

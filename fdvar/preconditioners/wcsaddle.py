@@ -84,15 +84,15 @@ def WC4DVarSaddleMat(Jhat: WC4DVarReducedFunctional):
     Raises
     ------
     TypeError :
-        If ``Jhat`` is not a :class:`.WC4DVarReducedFunctional`.
+        If ``Jhat`` is not a :class:`~fdvar.WC4DVarReducedFunctional`.
 
     See Also
     --------
     getSubWC4DVarSaddleMat
     WC4DVarSaddleKSP
     WC4DVarSaddlePC
-    .WC4DVarReducedFunctional
-    .AllAtOnceReducedFunctional
+    ~fdvar.WC4DVarReducedFunctional
+    ~fdvar.AllAtOnceReducedFunctional
     """
     # TODO: petsctools.cite("Fisher2017")
 
@@ -201,13 +201,13 @@ def WC4DVarSaddleKSP(Jhat: WC4DVarReducedFunctional,
     Raises
     ------
     TypeError :
-        If ``Jhat`` is not a :class:`.WC4DVarReducedFunctional`.
+        If ``Jhat`` is not a :class:`~fdvar.WC4DVarReducedFunctional`.
 
     See Also
     --------
     WC4DVarSaddleMat
     WC4DVarSaddlePC
-    .WC4DVarReducedFunctional
+    ~fdvar.WC4DVarReducedFunctional
     """
     amat = WC4DVarSaddleMat(Jhat)
 
@@ -247,7 +247,7 @@ class WC4DVarSaddlePC(petsctools.PCBase):
       \\end{pmatrix}
 
     This PC acts on a :func:`~pyadjoint.optimization.tao_solver.ReducedFunctionalMat`
-    for a :class:`.WC4DVarReducedFunctional`. It solves the larger saddle point
+    for a :class:`~fdvar.WC4DVarReducedFunctional`. It solves the larger saddle point
     system and returns just the :math:`\\delta x` part of the solution.
 
     **PETSc Options**
@@ -259,7 +259,7 @@ class WC4DVarSaddlePC(petsctools.PCBase):
 
     The :math:`(3, 3)` Schur complement of the saddle point system is the WC4DVar
     Hessian :math:`L^{T}D^{-1}L+H^{T}R^{-1}H` and is often approximated with the
-    :class:`.WC4DVarSchurPC`.
+    :class:`~fdvar.WC4DVarSchurPC`.
     `PCFieldsplit <https://petsc.org/release/manualpages/PC/PCFIELDSPLIT/>`_ can be
     used to eliminate down to the :math:`\\delta x` component with the following options:
 
@@ -278,8 +278,8 @@ class WC4DVarSaddlePC(petsctools.PCBase):
 
     See Also
     --------
-    .WC4DVarReducedFunctional
-    .WC4DVarSchurPC
+    ~fdvar.WC4DVarReducedFunctional
+    ~fdvar.WC4DVarSchurPC
     """
     needs_python_amat = True
     needs_python_pmat = True

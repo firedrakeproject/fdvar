@@ -11,6 +11,7 @@ __pycache__/
 # build
 /fdvar.egg-info
 
-# docs
+# auto generated docs files
 /demos/**/*.py
 /docs/build/
+/docs/source/demos

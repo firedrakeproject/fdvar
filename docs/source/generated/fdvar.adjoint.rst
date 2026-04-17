@@ -1,6 +1,11 @@
 fdvar.adjoint package
 =====================
 
+.. automodule:: fdvar.adjoint
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 Submodules
 ----------
 
@@ -24,14 +29,6 @@ fdvar.adjoint.reduced\_functional\_pipeline module
 --------------------------------------------------
 
 .. automodule:: fdvar.adjoint.reduced_functional_pipeline
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-Module contents
----------------
-
-.. automodule:: fdvar.adjoint
    :members:
    :show-inheritance:
    :undoc-members:

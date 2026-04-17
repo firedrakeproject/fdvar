@@ -12,7 +12,7 @@ class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
     """
     Python preconditioner to approximate the inverse
     of the tangent linear or adjoint model of an
-    :class:`.AllAtOnceReducedFunctional`.
+    :class:`~fdvar.AllAtOnceReducedFunctional`.
 
     The tangent linear :math:`L` (or adjoint :math:`L^{T}`) is block lower
     (upper) triangular so can be solved exactly with forward (backward)
@@ -47,12 +47,12 @@ class AllAtOnceRFGaussSeidelPC(petsctools.PCBase):
     -----
     The :class:`~petsc4py.PETSc.Mat` for this PC must be a
     :func:`~pyadjoint.optimization.tao_solver.ReducedFunctionalMat`
-    for an :class:`.AllAtOnceReducedFunctional`.
+    for an :class:`~fdvar.AllAtOnceReducedFunctional`.
 
     See Also
     --------
-    .AllAtOnceReducedFunctional
-    .WC4DVarSchurPC
+    ~fdvar.AllAtOnceReducedFunctional
+    WC4DVarSchurPC
     """
     prefix = "aaogs_"
     needs_python_pmat = True

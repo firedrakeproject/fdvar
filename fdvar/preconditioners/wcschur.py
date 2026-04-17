@@ -33,7 +33,7 @@ class WC4DVarSchurPC(petsctools.PCBase):
 
     KSPs are created for :math:`\\tilde{L}` and :math:`\\tilde{L}^{-T}` using
     a :func:`~pyadjoint.optimization.tao_solver.ReducedFunctionalMat` for the
-    :class:`.AllAtOnceReducedFunctional`, and for :math:`\\tilde{D}` using an
+    :class:`~fdvar.AllAtOnceReducedFunctional`, and for :math:`\\tilde{D}` using an
     :func:`~firedrake.ensemble.ensemble_mat.EnsembleBlockDiagonalMat` where
     each block is a :func:`~firedrake.adjoint.covariance_operator.CovarianceMat`.
 
@@ -51,7 +51,7 @@ class WC4DVarSchurPC(petsctools.PCBase):
 
     The ``Pmat`` operator for this preconditioner must be a
     :func:`~pyadjoint.optimization.tao_solver.ReducedFunctionalMat` for a
-    :class:`.WC4DVarReducedFunctional`.
+    :class:`~fdvar.WC4DVarReducedFunctional`.
 
     References
     ----------
@@ -61,8 +61,8 @@ class WC4DVarSchurPC(petsctools.PCBase):
 
     See Also
     --------
-    .WC4DVarReducedFunctional
-    .AllAtOnceReducedFunctional
+    ~fdvar.WC4DVarReducedFunctional
+    AllAtOnceReducedFunctional
     ~firedrake.ensemble.ensemble_mat.EnsembleBlockDiagonalMat
     ~firedrake.adjoint.covariance_operator.CovarianceMat
     """

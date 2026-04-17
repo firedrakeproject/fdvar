@@ -1,6 +1,11 @@
 fdvar package
 =============
 
+.. automodule:: fdvar
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 Subpackages
 -----------
 
@@ -33,14 +38,6 @@ fdvar.wc4dvar\_reduced\_functional module
 -----------------------------------------
 
 .. automodule:: fdvar.wc4dvar_reduced_functional
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-Module contents
----------------
-
-.. automodule:: fdvar
    :members:
    :show-inheritance:
    :undoc-members:

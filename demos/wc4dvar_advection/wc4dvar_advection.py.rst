@@ -1,21 +1,26 @@
+=======================================
 Weak constraint 4DVar data assimilation
 =======================================
-
 
 .. rst-class:: emphasis
 
     This tutorial was contributed by `Josh Hope-Collins <mailto:joshua.hope-collins13@imperial.ac.uk>`__
+
+.. contents::
+
+Weak constraint 4DVar
+=====================
 
 Data assimilation is the process of using real world observations to improve the accuracy of a simulation, and is commonly used in weather and climate modelling.
 A particular variant called "weak constraint" 4DVar (WC4DVar) allows the use of parallel-in-time solvers.
 
 In data assimilation problems we want to find an approximation :math:`x_{j}` of the true values :math:`x^{t}_{j}` of a timeseries, :math:`0<j<N`. and we have the following available to us:
 
-  #. Observation operators :math:`\mathcal{H}_{j}`, and incomplete and imperfect (noisy) observations of :math:`x^{t}_{j}` at each time point :math:`y_j=\mathcal{H}(x^{t}_{j}) + r_{j}`, where the noise is :math:`r_{j}\sim\mathcal{N}(0,R_{j})` with correlation matrix :math:`R_{j}`.
+#. Observation operators :math:`\mathcal{H}_{j}`, and incomplete and imperfect (noisy) observations of :math:`x^{t}_{j}` at each time point :math:`y_j=\mathcal{H}(x^{t}_{j}) + r_{j}`, where the noise is :math:`r_{j}\sim\mathcal{N}(0,R_{j})` with correlation matrix :math:`R_{j}`.
 
-  #. An imperfect PDE model :math:`\mathcal{M}_{j}` that propagates from one value to the next :math:`x^{t}_{j}=\mathcal{M}_{j}(x^{t}_{j-1})+q_{j}`, where the noise is :math:`q_{j}\sim\mathcal{N}(0,Q_{j})` with correlation matrix :math:`Q_{j}`.
+#. An imperfect PDE model :math:`\mathcal{M}_{j}` that propagates from one value to the next :math:`x^{t}_{j}=\mathcal{M}_{j}(x^{t}_{j-1})+q_{j}`, where the noise is :math:`q_{j}\sim\mathcal{N}(0,Q_{j})` with correlation matrix :math:`Q_{j}`.
 
-  #. A prior estimate of the initial condition, called the "background", :math:`x_{b}=x^{t}_{0}+b`, where the noise is :math:`b\sim\mathcal{N}(0,B)` with correlation matrix :math:`B`.
+#. A prior estimate of the initial condition, called the "background", :math:`x_{b}=x^{t}_{0}+b`, where the noise is :math:`b\sim\mathcal{N}(0,B)` with correlation matrix :math:`B`.
 
 We want to find a timeseries that minimises the misfits with the background, the observations, and the propagator, which we formulate as finding the minimiser :math:`\mathbf{x}=(x_{0}, x_{1}, \dots, x_{N})` of the following objective functional:
 
@@ -58,40 +63,47 @@ This is a linear least squares problem which can be written in terms of the Hess
    = \mathbf{L}^{T}\mathbf{R}^{-1}\mathbf{b} + \mathbf{H}^{T}\mathbf{R}^{-1}\mathbf{d}
 
 with :math:`\mathbf{b}=(b_{0}, c_{1}, c_{2}, \dots, c_{N})^{T}` and :math:`\mathbf{d}=(d_{0}, d_{1}, d_{2}, \dots, d_{N})^{T}`.
-The matrices in the Hessian are constructed from the linearised propagator and observation operators and the covariance operators:
+The matrices in the Hessian are constructed from the linearised propagator and observation operators
 
 .. math::
    \mathbf{L} =
    \begin{pmatrix}
-      I      &        &        &   \\
-      -M_{1} & I      &        &   \\
-             & -M_{2} & I      &   \\
-             &        & -M_{3} & I \\
-   \end{pmatrix},
-   \quad
-   \mathbf{D} =
-   \begin{pmatrix}
-      B &       &       &       \\
-        & Q_{1} &       &       \\
-        &       & Q_{2} &       \\
-        &       &       & Q_{3} \\
+      I      &        &        &        &   \\
+      -M_{1} & I      &        &        &   \\
+             & -M_{2} & I      &        &   \\
+             &        & \ddots & \ddots &   \\
+             &        &        & -M_{N} & I \\
    \end{pmatrix},
    \quad
    \mathbf{H} =
    \begin{pmatrix}
-      H_{0} &       &       &       \\
-            & H_{1} &       &       \\
-            &       & H_{2} &       \\
-            &       &       & H_{3} \\
+      H_{0} &       &       &        &       \\
+            & H_{1} &       &        &       \\
+            &       & H_{2} &        &       \\
+            &       &       & \ddots &       \\
+            &       &       &        & H_{N} \\
+   \end{pmatrix},
+
+and the covariance operators for the background, model, and observation errors
+
+.. math::
+   \mathbf{D} =
+   \begin{pmatrix}
+      B &       &       &        &       \\
+        & Q_{1} &       &        &       \\
+        &       & Q_{2} &        &       \\
+        &       &       & \ddots &       \\
+        &       &       &        & Q_{N} \\
    \end{pmatrix},
    \quad
    \mathbf{R} =
    \begin{pmatrix}
-      R_{0} &       &       &       \\
-            & R_{1} &       &       \\
-            &       & R_{2} &       \\
-            &       &       & R_{3} \\
-   \end{pmatrix}
+      R_{0} &       &       &        &       \\
+            & R_{1} &       &        &       \\
+            &       & R_{2} &        &       \\
+            &       &       & \ddots &       \\
+            &       &       &        & R_{N} \\
+   \end{pmatrix}.
 
 The observation operator matrix :math:`\textbf{H}` and the correlation operator matrices :math:`\textbf{D}` and :math:`\textbf{R}` are all block diagonal, with one block per timestep, so clearly both the action and inverse of each can be applied parallel-in-time.
 The model integration matrix :math:`\textbf{L}` is block lower bidiagonal so its action can be applied parallel-in-time, with a communication overhead for time-halos that is independent of the number of timesteps.
@@ -108,10 +120,11 @@ Unfortunately, using the exact integration operator :math:`\mathbf{\tilde{L}}=\m
 
    \textbf{L}^{-1} =
    \begin{pmatrix}
-      I        &          &          &   \\
-      -M_{1,1} & I        &          &   \\
-      -M_{1,2} & -M_{2,2} & I        &   \\
-      -M_{1,3} & -M_{2,3} & -M_{3,3} & I \\
+      I        &          &        &            &   \\
+      -M_{1,1} & I        &        &            &   \\
+      -M_{1,2} & -M_{2,2} & I      &            &   \\
+      \dots    & \dots    & \dots  & \dots      &   \\
+      -M_{1,N} & -M_{2,N} & \dots  & -M_{N-1,N} & I \\
    \end{pmatrix}
 
 where :math:`M_{i,j}=\prod^{j}_{k=i}M_{k}` is the integration from timestep :math:`i-1` to timestep :math:`j` (so :math:`M_{j,j}=M_{j}`).
@@ -173,19 +186,25 @@ Using the same approximation :math:`\mathbf{\tilde{S}}` as above we can construc
       \mathbf{L}^{T} & \mathbf{H}^{T} & \mathbf{\tilde{S}} \\
    \end{pmatrix}
 
-
 In this demo we will solve the WC4DVar system for the advection-diffusion equation using the saddle point formulation preconditioned with :math:`\mathbf{P_{U}}`.
 We will go through how to set up and solve the WC4DVar system in Firedrake, with the following steps:
 
-  #. Define the finite element model for the advection-diffusion equation :math:`\mathcal{M}`.
-  #. Define the observation operator :math:`\mathcal{H}`.
-  #. Define the error covariance operators :math:`B`, :math:`R`, and :math:`Q`.
-  #. Generate synthetic "ground-truth" observation data for :math:`y_{j}`.
-  #. Create a ``ReducedFunctional`` for :math:`\mathcal{J}`.
-  #. Specify a solver configuration and calculate an optimised :math:`\mathbf{x}`.
+#. Define the finite element model for the advection-diffusion equation :math:`\mathcal{M}`.
+#. Define the observation operator :math:`\mathcal{H}`.
+#. Define the error covariance operators :math:`B`, :math:`R`, and :math:`Q`.
+#. Generate synthetic "ground-truth" observation data for :math:`y_{j}`.
+#. Create a :class:`~pyadjoint.ReducedFunctional` for :math:`\mathcal{J}`.
+#. Specify a solver configuration and calculate an optimised :math:`\mathbf{x}`.
 
-First we import Firedrake, including the components from the adjoint module.
-As we will be generating some random noise, we set the random number generator seed to a fixed value.
+Constructing the 4DVar system
+=============================
+
+First we import Firedrake, including everything from the adjoint module. As we will be
+generating some random noise, we set the random number generator seed to a fixed value.
+We will integrate forward in time with an implicit Runge-Kutta method using the excellent
+`Irksome library <https://www.firedrakeproject.org/Irksome>`_ (to install Irksome either
+install fdvar with the "demos" optional dependency using ``pip install fdvar[demos]``,
+or see the installation instructions on the Irksome website)
 
 ::
 
@@ -229,7 +248,7 @@ For the time integration we use the implicit midpoint rule with the semi-discret
 where :math:`V` is the function space for the solution.
 
 First we create the mesh and function spaces.
-To enable time-parallelism we use Firedrake's :class:`~firedrake.ensemble.ensemble.Ensemble`, which splits ``COMM_WORLD`` into several ensemble members, with spatial parallelism within each ensemble member and time-parallelism between members.
+To enable time-parallelism we use Firedrake's :class:`~firedrake.ensemble.ensemble.Ensemble`, which splits :data:`~mpi4py.MPI.COMM_WORLD` into several ensemble members, with spatial parallelism within each ensemble member and time-parallelism between members.
 Here we specify just one MPI rank per ensemble member, and the number of ensemble members automatically adjusts to use all available ranks.
 The communicator ``ensemble.comm`` is used for the spatial parallelism, so is the one we use to construct the mesh.
 We create the CG1 function space for :math:`V`, and the space of real numbers to hold the time :math:`t`.
@@ -245,7 +264,7 @@ We create the CG1 function space for :math:`V`, and the space of real numbers to
   V = FunctionSpace(mesh, "CG", 1)
   Vr = FunctionSpace(mesh, "R", 0)
 
-The control :math:`\mathbf{x}` is a timeseries distributed in time over the ``Ensemble``, with each timestep :math:`x_{j}` being a Firedrake ``Function``.
+The control :math:`\mathbf{x}` is a timeseries distributed in time over the ``Ensemble``, with each timestep :math:`x_{j}` being a Firedrake :class:`~firedrake.function.Function`.
 For this we use an :class:`~firedrake.ensemble.ensemble_functionspace.EnsembleFunctionSpace` which represents a mixed function space with each component living on a particular ensemble member.
 To initialise the ``EnsembleFunctionSpace`` we just need the ``Ensemble`` and a list of ``FunctionSpace`` for the local components.
 We split the number of observation stages ``N`` equally across the ensemble members, and include an extra component on the first member for the initial condition :math:`x_{0}`.
@@ -267,10 +286,12 @@ The observations are taken at intervals of :math:`T_{\textrm{stage}}=n_{t}\Delta
 
   W = EnsembleFunctionSpace([V for _ in range(nlocal_spaces)], ensemble)
 
-**Define the propagator.**
+Defining the propagator
+-----------------------
 
-We construct the propagator :math:`\mathcal{M}` for the advection-diffusion scheme, using `Irksome <https://www.firedrakeproject.org/Irksome>`_ to provide the time integrator.
+We construct the propagator :math:`\mathcal{M}` for the advection-diffusion scheme, using Irksome to provide the time integrator.
 The forcing term :math:`g(t)` is rather involved, but just ensures that there is some non-trivial variation in the solution and prevents it decaying to zero over long time periods due to the diffusion.
+We use Irksome's :func:`~irksome.Dt` symbol to signify the time derivative term, and the one stage :class:`~irksome.GaussLegendre` method which is equivalent to the implicit midpoint rule.
 
 ::
 
@@ -331,9 +352,10 @@ For convenience we make a Python function for the propagator :math:`\mathcal{M}(
           t.assign(t + dt)
       return stepper.u0.copy(deepcopy=True)
 
-**Define the observation operator.**
+Defining the observation operator
+---------------------------------
 
-Our observations will be point evaluations at a set of random locations in the domain, which are defined using a :class:`~firedrake.mesh.VertexOnlyMesh`.
+Our observations will be point evaluations at a set of random locations in the domain, which are defined using a :func:`~firedrake.mesh.VertexOnlyMesh`.
 The observation operator :math:`\mathcal{H}` is then simply interpolating onto this mesh.
 
 ::
@@ -345,7 +367,8 @@ The observation operator :math:`\mathcal{H}` is then simply interpolating onto t
   def H(x):
       return assemble(interpolate(x, U))
 
-**Define the error covariance operators.**
+Defining the error covariance operators
+---------------------------------------
 
 We need to do three things with correlation operators: apply the action :math:`B`, the inverse :math:`B^{-1}`, and and generate physically relevant noise.
 If :math:`w\sim\mathcal{N}(0,I)` is a vector of white noise then :math:`B^{1/2}w=v\sim\mathcal{N}(0,B)`, i.e. :math:`B^{1/2}` transforms uncorrelated noise to correlated noise with covariance :math:`B`.
@@ -375,21 +398,22 @@ The observations are treated as uncorrelated, i.e. a diagonal covariance operato
 
 Firedrake provides an abstract base class :class:`~firedrake.adjoint.covariance_operator.CovarianceOperatorBase` for implementing new covariance operators. 
 
-**Generate observational data.**
+Generating observational data
+-----------------------------
 
 We can use a known reference initial condition :math:`\hat{x}` to generate synthetic "ground-truth" observations :math:`y_{i}`.
 We do this by adding noise consistently with the original definition of the problem, i.e. we add noise :math:`b_{j}\sim\mathcal{N}(0,B)` at the initial condition, then at each observation time we add noise :math:`q_{j}\sim\mathcal{N}(0,Q)` to the solution and add noise :math:`r_{j}\sim\mathcal{N}(0,R)` to the observations.
 This process is detailed below:
 
-  1. :math:`x_{b}     \leftarrow \hat{x} + b_{b}`
-  2. :math:`x^{t}_{0} \leftarrow \hat{x} + b_{0}`
-  3. :math:`y_{0}     \leftarrow \mathcal{H}(x^{t}_{0}) + r_{0}`
-  4. **for** :math:`j=1` **to** :math:`j=N` **do**
+#. :math:`x_{b}     \leftarrow \hat{x} + b_{b}`
+#. :math:`x^{t}_{0} \leftarrow \hat{x} + b_{0}`
+#. :math:`y_{0}     \leftarrow \mathcal{H}(x^{t}_{0}) + r_{0}`
+#. **for** :math:`j=1` **to** :math:`j=N` **do**
 
-    #. :math:`x^{t}_{j} \leftarrow \mathcal{M}(x^{t}_{j-1}) + q_{j}`
-    #. :math:`y_{j}     \leftarrow \mathcal{H}(x^{t}_{j}) + r_{j}`
+   #. :math:`x^{t}_{j} \leftarrow \mathcal{M}(x^{t}_{j-1}) + q_{j}`
+   #. :math:`y_{j}     \leftarrow \mathcal{H}(x^{t}_{j}) + r_{j}`
 
-  5. **end for**
+#. **end for**
 
 See that we generate both the background :math:`x_{b}` and the "truth" initial condition :math:`x^{t}_{0}` by perturbing :math:`\hat{x}`, which means that both states will contain noise (rather than one or the other being completely deterministic).
 
@@ -433,12 +457,13 @@ Now that we have the "ground-truth" observations, we can create a function to ge
   def observation_error(i):
       return lambda x: Function(U).assign(H(x) - y[i])
 
-**Define the reduced functional.**
+Building the ReducedFunctional
+-------------------------------
 
 Now we have all the pieces ready to start assembling the 4DVar system.
-:func:`pyadjoint.continue_annotation` tells Pyadjoint to start recording any code that is executed from now on.
-The :class:`.WC4DVarReducedFunctional` class will manage recording, constructing, and solving the 4DVar system.
-To initialise it, it needs an :class:`~firedrake.ensemble.ensemble_function.EnsembleFunction` as a :class:`pyadjoint.Control`, and the components to evaluate the functional at the initial condition, i.e. the background state and covariance for :math:`\|x_{0}-x_{b}\|_{B^{-1}}^{2}`, and the observation error and covariance for :math:`\|\mathcal{H}_{0}(x_{0})-y_{0}\|_{R_{0}^{-1}}^{2}`.
+:func:`~pyadjoint.continue_annotation` tells Pyadjoint to start recording any code that is executed from now on.
+The :class:`~fdvar.WC4DVarReducedFunctional` class will manage recording, constructing, and solving the 4DVar system.
+To initialise it, it needs an :class:`~firedrake.ensemble.ensemble_function.EnsembleFunction` as a :class:`~pyadjoint.Control`, and the components to evaluate the functional at the initial condition, i.e. the background state and covariance for :math:`\|x_{0}-x_{b}\|_{B^{-1}}^{2}`, and the observation error and covariance for :math:`\|\mathcal{H}_{0}(x_{0})-y_{0}\|_{R_{0}^{-1}}^{2}`.
 
 
 ::
@@ -457,7 +482,7 @@ To initialise it, it needs an :class:`~firedrake.ensemble.ensemble_function.Ense
       observation_error=observation_error(0),
       gauss_newton=True)
 
-All Firedrake operations are "taped" by pyadjoint, so all we need to do to initialise the stages is to run :math:`\mathcal{M}` and :math:`\mathcal{H}` within the ``WC4DVarReducedFunctional.recording_stages`` context manager below.
+All Firedrake operations are "taped" by pyadjoint, so all we need to do to initialise the stages is to run :math:`\mathcal{M}` and :math:`\mathcal{H}` within the :meth:`~fdvar.WC4DVarReducedFunctional.recording_stages` context manager below.
 For each ``stage``, we integrate forward from ``stage.control`` (i.e. :math:`x_{j-1}`), and then set the observation by providing the state (i.e. :math:`x_{j}=\mathcal{M}_{j}(x_{j-1})`) error operator, and the covariances.
 
 ::
@@ -489,17 +514,24 @@ We save a copy of the initial control to compare the optimised state to.
 
   prior = control.copy()
 
-**Configure the WC4DVar solver.**
+Solving the 4DVar system
+========================
 
 TAO is PETSc's optimisation library and provides a range of optimisation methods.
+Pyadjoint provides a :class:`~pyadjoint.optimisation.tao_solver.TAOSolver` which
+creates all the necessary callbacks for TAO from a ``ReducedFunctional``.
+
+Configuring the WC4DVar solver
+------------------------------
+
 Just like the timestepper, the TAO solver is configured using a set of options strings.
 We will configure the solver to use the saddle point formulation :math:`\mathbf{A}` preconditioned by the upper triangular Schur factorisation :math:`\mathbf{P}_{U}` with the approximate Schur complement :math:`\mathbf{\tilde{S}}=\mathbf{\tilde{L}}^{T}\mathbf{D}^{-1}\mathbf{\tilde{L}}` where :math:`\mathbf{\tilde{L}}` is constructed using :math:`\tilde{M}=I`.
 
 To make this a bit simpler, we will define a couple of options sets for components of the full solver.
 The ``covariance_parameters`` below can be used to solve the matrices :math:`\mathbf{D}` and :math:`\mathbf{R}` in :math:`\mathbf{P}_{U}`, and :math:`\mathbf{D}^{-1}` in :math:`\mathbf{\tilde{S}}^{-1}`.
 These matrices are block diagonal with one block per component of an ``EnsembleFunctionSpace``, so we can use the :class:`~firedrake.ensemble.ensemble_pc.EnsembleBJacobiPC`.
-Just like PETSc's ``PCBJacobi`` this creates a ``sub`` KSP for each block (i.e. for each covariance operator :math:`B`, :math:`Q`, or :math:`R`).
-On each block we use the :class:`~firedrake.adjoint.covariance_operator.CovariancePC` which will automatically apply the inverse or action depending on if it acts on e.g. :math:`\mathbf{D}` or :math:`\mathbf{D}^{-1}`.
+Just like PETSc's `PCBJacobi <https://petsc.org/release/manualpages/PC/PCBJACOBI/>`_ this creates a ``sub`` KSP for each block (i.e. for each covariance operator :math:`B`, :math:`Q`, or :math:`R`).
+On each block we use the :class:`~firedrake.preconditioners.covariance.CovariancePC` which will automatically apply the inverse or action depending on if it acts on e.g. :math:`\mathbf{D}` or :math:`\mathbf{D}^{-1}`.
 
 ::
 
@@ -510,10 +542,10 @@ On each block we use the :class:`~firedrake.adjoint.covariance_operator.Covarian
       'sub_pc_python_type': 'firedrake.CovariancePC',
   }
 
-The ``schur_parameters`` specify the approximate Schur complement :math:`\mathbf{\tilde{S}}`, which is implemented with the :class:`~firedrake.preconditioners.adjoint.wc4dvar.WC4DVarSchurPC`.
+The ``schur_parameters`` specify the approximate Schur complement :math:`\mathbf{\tilde{S}}`, which is implemented with the :class:`fdvar.WC4DVarSchurPC`.
 This preconditioner requires options to solve :math:`\mathbf{D}^{-1}`, given in ``wcschur_d``, and to solve :math:`\mathbf{\tilde{L}}`, given in ``wcschur_l``.
 For :math:`\mathbf{D}^{-1}` we can use the ``covariance_parameters``.
-For :math:`\mathbf{\tilde{L}}` we use the :class:`~firedrake.preconditioners.adjoint.allatonce.AllAtOnceRFGaussSeidelPC`, which uses forward substitution so solve :math:`\mathbf{\tilde{L}}`.
+For :math:`\mathbf{\tilde{L}}` we use the :class:`fdvar.AllAtOnceRFGaussSeidelPC`, which uses forward substitution so solve :math:`\mathbf{\tilde{L}}`.
 This preconditioner has one option, ``pc_aaogs_type``, which can be a) ``'model'`` i.e. :math:`\tilde{M}=M` and :math:`\mathbf{\tilde{L}}=\mathbf{L}` or b) ``'identity'`` i.e. :math:`\tilde{M}=I`.
 
 ::
@@ -624,6 +656,9 @@ Now we set up the full solver options in the ``'tao_parameters'`` below.
       tao_parameters["tao_gttol"] = 0.9
       tao_parameters["tao_nls"]["wcsaddle"]["ksp_rtol"] = 1e-1
 
+Computing the optimised state
+-----------------------------
+
 Now we have a reduced functional and a set of TAO parameters we can solve the optimisation problem using Pyadjoint's :class:`~pyadjoint.TAOSolver`.
 
 ::
@@ -663,20 +698,35 @@ Lastly, we compare the error between the optimised solution and ground truth dat
   PETSc.Sys.Print(f"Error reduction factor = {xopts_error/prior_error:.3e}")
   PETSc.Sys.Print()
 
-The output of these print statements is shown below.
+Representative output of these print statements is shown below (exact values may be change slightly due to RNG).
 At the initial and final conditions the optimised solution matches the ground truth around 13 times and 20 times more accurately than the prior solution respectively.
 
-::
+.. code:: none
 
-  # Errors at initial timestep:
-  # prior_error = 6.723e-01
-  # xopts_error = 4.925e-02
-  # Error reduction factor = 7.326e-02
+  Errors at initial timestep:
+  prior_error = 6.723e-01
+  xopts_error = 4.925e-02
+  Error reduction factor = 7.326e-02
 
-  # Errors at final timestep:
-  # prior_error = 8.843e-01
-  # xopts_error = 4.333e-02
-  # Error reduction factor = 4.900e-02
+  Errors at final timestep:
+  prior_error = 8.843e-01
+  xopts_error = 4.333e-02
+  Error reduction factor = 4.900e-02
 
-A runnable python version of this demo can be found :demo:`here<data_assimilation.py>`.
-This demo can be run in parallel as long as the number of observations stages :math:`N` is divisible by the number of MPI ranks.
+**Running the demo yourself.**
+
+A runnable python script of this demo can be found :demo:`here<wc4dvar_advection.py>`.
+
+The python script can be run in parallel as long as the number of observations stages
+:math:`N` is divisible by the number of MPI ranks ``nranks``:
+
+.. code:: none
+
+  mpiexec -n <nranks> python wc4dvar_advection.py
+
+Additional options can be passed to the ``TAOSolver`` from the command line,
+for example changing the tolerance of the saddle point solve:
+
+.. code:: none
+
+  python wc4dvar_advection.py -tao_nls_wcsaddle_ksp_rtol 1e-3

@@ -27,7 +27,7 @@ include = [
 [project.optional-dependencies]
 docs = [
   "bibtexparser",
-  "matplotlib",  # needed to resolve API
+  "matplotlib",
   "numpydoc",
   "pylit",
   "sphinx",
