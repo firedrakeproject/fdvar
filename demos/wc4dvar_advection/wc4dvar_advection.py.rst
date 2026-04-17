@@ -542,10 +542,10 @@ On each block we use the :class:`~firedrake.preconditioners.covariance.Covarianc
       'sub_pc_python_type': 'firedrake.CovariancePC',
   }
 
-The ``schur_parameters`` specify the approximate Schur complement :math:`\mathbf{\tilde{S}}`, which is implemented with the :class:`fdvar.WC4DVarSchurPC`.
+The ``schur_parameters`` specify the approximate Schur complement :math:`\mathbf{\tilde{S}}`, which is implemented with the :class:`~fdvar.WC4DVarSchurPC`.
 This preconditioner requires options to solve :math:`\mathbf{D}^{-1}`, given in ``wcschur_d``, and to solve :math:`\mathbf{\tilde{L}}`, given in ``wcschur_l``.
 For :math:`\mathbf{D}^{-1}` we can use the ``covariance_parameters``.
-For :math:`\mathbf{\tilde{L}}` we use the :class:`fdvar.AllAtOnceRFGaussSeidelPC`, which uses forward substitution so solve :math:`\mathbf{\tilde{L}}`.
+For :math:`\mathbf{\tilde{L}}` we use the :class:`~fdvar.AllAtOnceRFGaussSeidelPC`, which uses forward substitution so solve :math:`\mathbf{\tilde{L}}`.
 This preconditioner has one option, ``pc_aaogs_type``, which can be a) ``'model'`` i.e. :math:`\tilde{M}=M` and :math:`\mathbf{\tilde{L}}=\mathbf{L}` or b) ``'identity'`` i.e. :math:`\tilde{M}=I`.
 
 ::
