@@ -21,3 +21,7 @@ from fdvar.preconditioners import (  # noqa: F401
     WC4DVarSchurPC,
     WC4DVarSaddlePC,
 )
+from fdvar.covariance_operator import (  # noqa: F401
+    AutoregressiveCovariance,
+    MixedCovarianceOperator,
+)

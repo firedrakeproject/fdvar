@@ -398,7 +398,7 @@ class WC4DVarSaddlePC(petsctools.PCBase):
         if self.Jphat is not self.Jhat:
             Jdata = self.Jhat.control.data()._ad_to_petsc()
             Jpdata = self.Jphat.control.data()._ad_to_petsc()
-            if (Jdata - Jpdata).norm() > 1e-10:
+            if (Jdata - Jpdata).norm()/Jdata.norm() > 1e-10:
                 self.Jphat(self.Jhat.control.data())
         self.saddle_ksp.setUp()
 
