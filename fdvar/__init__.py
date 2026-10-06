@@ -5,6 +5,7 @@ __all__ = (
     "AllAtOnceRFGaussSeidelPC",
     "WC4DVarSchurPC",
     "WC4DVarSaddlePC",
+    "tao_converged_maxits_test",
 )
 
 from fdvar.allatonce_reduced_functional import (  # noqa: F401
@@ -24,4 +25,7 @@ from fdvar.preconditioners import (  # noqa: F401
 from fdvar.covariance_operator import (  # noqa: F401
     AutoregressiveCovariance,
     MixedCovarianceOperator,
+)
+from fdvar.tao import (  # noqa: F401
+    tao_converged_maxits_test,
 )
