@@ -318,7 +318,7 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             yi = Function(cov.function_space())
             with set_working_tape() as tape:
                 observation_norms.append(
-                    ReducedFunctional(cov.norm(yi), Control(yi), tape=tape))
+                    ReducedFunctional(0.5*cov.norm(yi), Control(yi), tape=tape))
 
         # Create a ReducedFunctional for each model error covariance operator
         model_covariances = [self.background_covariance] if rank == 0 else []
@@ -328,7 +328,7 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             xi = Function(cov.function_space())
             with set_working_tape() as tape:
                 model_norms.append(
-                    ReducedFunctional(cov.norm(xi), Control(xi), tape=tape))
+                    ReducedFunctional(0.5*cov.norm(xi), Control(xi), tape=tape))
 
         # Now we have all the various per-stage components (M, H, B, D, R, etc)
         # we can build the space-time collective RFs that will evaluate the

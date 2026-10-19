@@ -1,6 +1,43 @@
 import numpy as np
 from firedrake import PETSc
 
+_ksp_norm_to_enum = {
+    k: v
+    for k, v in PETSc.KSP.NormType.__dict__.items()
+    if isinstance(v, int)
+}
+_enum_to_ksp_norm = {
+    v: k.lower()
+    for k, v in _ksp_norm_to_enum.items()
+    if 'NORM_' not in k
+}
+
+
+def ksp_objective_monitor(ksp, it, prnorm, ctx=None):
+    tab_level = ksp.getTabLevel()
+    tab = '    '
+    # obj = 0.5 * (x' * A * x) - (x' * b)
+    #     = - 0.5 * x' * (b + r)
+    b = ksp.getRhs()
+    x = ksp.buildSolution()
+    r = ksp.buildResidual()
+    rnorm = r.norm()
+    bnorm = b.norm()
+    obj_val = -0.5*x.dot((r + b))
+    if it == 0:
+        PETSc.Sys.Print(
+            tab*tab_level + f'Residual norms for {ksp.prefix} solve.',
+            comm=ksp.comm
+        )
+    PETSc.Sys.Print(
+        tab*(tab_level - 1)
+        + f'{it: 5d} KSP {_enum_to_ksp_norm[ksp.norm_type]} resid norm {prnorm:10.8e}'
+        + f' true resid norm {r.norm():10.8e}'
+        + f' ||r(i)||/||b|| {rnorm/bnorm:10.8e}'
+        + f' objective {obj_val:10.8e}',
+        comm=ksp.comm
+    )
+
 
 def tao_converged_maxits_test(tao):
     """

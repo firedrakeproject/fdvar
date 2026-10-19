@@ -32,4 +32,5 @@ from fdvar.covariance_operator import (  # noqa: F401
 )
 from fdvar.tao import (  # noqa: F401
     tao_converged_maxits_test,
+    ksp_objective_monitor,
 )
