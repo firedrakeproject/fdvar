@@ -73,10 +73,10 @@ class SC4DVarReducedFunctional(AbstractReducedFunctional):
         # penalty for straying from prior
         background_error = x0.copy(deepcopy=True)
         background_error -= background
-        self._functional += background_covariance.norm(background_error)
+        self._functional += 0.5*background_covariance.norm(background_error)
 
         # penalty for straying from initial observations
-        self._functional += observation_covariance.norm(observation_error(x0))
+        self._functional += 0.5*observation_covariance.norm(observation_error(x0))
 
     @property
     def controls(self):
@@ -209,7 +209,7 @@ class SC4DVarObservationStage:
                 " recording the 4DVar observation stages.")
 
         self._rf._functional += (
-            observation_covariance.norm(observation_error(state)))
+            0.5*observation_covariance.norm(observation_error(state)))
 
         self._rf.observation_covariances.append(observation_covariance)
         self._rf.observation_errors.append(observation_error)
