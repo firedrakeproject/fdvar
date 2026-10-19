@@ -9,6 +9,7 @@ __all__ = (
     "MixedCovarianceOperator",
     "EnsembleCovarianceOperator",
     "tao_converged_maxits_test",
+    "ksp_objective_monitor",
 )
 
 from fdvar.allatonce_reduced_functional import (  # noqa: F401

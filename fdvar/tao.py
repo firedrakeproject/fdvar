@@ -13,9 +13,13 @@ _enum_to_ksp_norm = {
 }
 
 
-def ksp_objective_monitor(ksp, it, prnorm, ctx=None):
+def ksp_objective_monitor(ksp, it, prnorm, tao=None):
     tab_level = ksp.getTabLevel()
     tab = '    '
+    if tao:
+        _, shift, _, _, _, _ = tao.getSolutionStatus()
+    else:
+        shift = 0.
     # obj = 0.5 * (x' * A * x) - (x' * b)
     #     = - 0.5 * x' * (b + r)
     b = ksp.getRhs()
@@ -23,7 +27,7 @@ def ksp_objective_monitor(ksp, it, prnorm, ctx=None):
     r = ksp.buildResidual()
     rnorm = r.norm()
     bnorm = b.norm()
-    obj_val = -0.5*x.dot((r + b))
+    obj_val = shift - 0.5*x.dot((r + b))
     if it == 0:
         PETSc.Sys.Print(
             tab*tab_level + f'Residual norms for {ksp.prefix} solve.',
@@ -31,10 +35,10 @@ def ksp_objective_monitor(ksp, it, prnorm, ctx=None):
         )
     PETSc.Sys.Print(
         tab*(tab_level - 1)
-        + f'{it: 5d} KSP {_enum_to_ksp_norm[ksp.norm_type]} resid norm {prnorm:10.8e}'
-        + f' true resid norm {r.norm():10.8e}'
-        + f' ||r(i)||/||b|| {rnorm/bnorm:10.8e}'
-        + f' objective {obj_val:10.8e}',
+        + f'{it: 5d} KSP {_enum_to_ksp_norm[ksp.norm_type]} resid norm {prnorm:8.6e}'
+        + f' true resid norm {r.norm():8.6e}'
+        + f' ||r(i)||/||b|| {rnorm/bnorm:8.6e}'
+        + f' objective {obj_val:9.6e}',
         comm=ksp.comm
     )
 
