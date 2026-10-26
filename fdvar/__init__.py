@@ -1,3 +1,6 @@
+# make sure that PETSc is imported by Firedrake first so cmdline args are passed
+from firedrake.petsc import PETSc  # noqa: F401
+
 __all__ = (
     "SC4DVarReducedFunctional",
     "WC4DVarReducedFunctional",

@@ -202,20 +202,23 @@ class WC4DVarSchurPC(petsctools.PCBase):
 
         # Just chain the solve for each KSP
 
-        with petsctools.inserted_options(self.LTksp):
-            self.LTksp.solve(rhs, sol)
+        with PETSc.Log.Event(f"{type(self).__name__}.apply.LTSolve"):
+            with petsctools.inserted_options(self.LTksp):
+                self.LTksp.solve(rhs, sol)
 
         sol.copy(result=rhs)
         sol.zeroEntries()
 
-        with petsctools.inserted_options(self.Dksp):
-            self.Dksp.solve(rhs, sol)
+        with PETSc.Log.Event(f"{type(self).__name__}.apply.DSolve"):
+            with petsctools.inserted_options(self.Dksp):
+                self.Dksp.solve(rhs, sol)
 
         sol.copy(result=rhs)
         sol.zeroEntries()
 
-        with petsctools.inserted_options(self.Lksp):
-            self.Lksp.solve(rhs, sol)
+        with PETSc.Log.Event(f"{type(self).__name__}.apply.LSolve"):
+            with petsctools.inserted_options(self.Lksp):
+                self.Lksp.solve(rhs, sol)
 
         # y is already sol so no copy needed
 
