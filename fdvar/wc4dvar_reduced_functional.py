@@ -239,8 +239,8 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             + self.Jmodel.hessian(**hess_args)
         )
 
-    @contextmanager
     @PETSc.Log.EventDecorator()
+    @contextmanager
     def recording_stages(self, sequential=True, nstages=None, **stage_kwargs):
         if not sequential:
             raise ValueError("Recording stages concurrently not yet implemented")
@@ -318,7 +318,7 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             yi = Function(cov.function_space())
             with set_working_tape() as tape:
                 observation_norms.append(
-                    ReducedFunctional(cov.norm(yi), Control(yi), tape=tape))
+                    ReducedFunctional(0.5*cov.norm(yi), Control(yi), tape=tape))
 
         # Create a ReducedFunctional for each model error covariance operator
         model_covariances = [self.background_covariance] if rank == 0 else []
@@ -328,7 +328,13 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             xi = Function(cov.function_space())
             with set_working_tape() as tape:
                 model_norms.append(
-                    ReducedFunctional(cov.norm(xi), Control(xi), tape=tape))
+                    ReducedFunctional(0.5*cov.norm(xi), Control(xi), tape=tape))
+
+        # sanity checks on RFs and norm types
+        for R_, H_ in zip(self.observation_covariances, self.observation_rfs):
+            assert R_.function_space() == H_.functional.function_space()
+        for D_, M_ in zip(self.model_covariances, self.model_rfs):
+            assert D_.function_space() == M_.functional.function_space()
 
         # Now we have all the various per-stage components (M, H, B, D, R, etc)
         # we can build the space-time collective RFs that will evaluate the

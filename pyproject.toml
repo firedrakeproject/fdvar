@@ -25,6 +25,22 @@ include = [
 ]
 
 [project.optional-dependencies]
+docs = [
+  "bibtexparser",
+  "matplotlib",
+  "numpydoc",
+  "pylit",
+  "sphinx",
+  "sphinx-autobuild",
+  "sphinx-reredirects",
+  "sphinxcontrib-bibtex",
+  "sphinxcontrib-jquery",
+  "sphinxcontrib-svg2pdfconverter",
+  "sphinxcontrib-youtube",
+  "sphinx_bootstrap_theme",
+  "sphinx_design",
+  "sphinx-copybutton",
+]
 demos = [
    "irksome @ git+https://github.com/firedrakeproject/Irksome.git@master",
 ]
