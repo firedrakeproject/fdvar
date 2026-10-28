@@ -13,6 +13,7 @@ from firedrake.adjoint import (
     MixedCovarianceOperator as FiredrakeMixedCovarianceOperator,
 )
 from firedrake.adjoint.covariance_operator import CovarianceOperatorBase
+from ufl.duals import is_dual
 
 
 class AutoregressiveCovariance(FiredrakeAutoregressiveCovariance):
@@ -128,19 +129,21 @@ class MixedCovarianceOperator(FiredrakeMixedCovarianceOperator):
                 xflattened.extend(xi.subfunctions)
         return xflattened
 
-    def _from_subs(self, xsubs, xfull=None, *, dual=False):
+    def _from_subs(self, xsubs, xfull=None):
         if xfull is None:
             W = self.function_space()
-            xfull = Function(W.dual() if dual else W)
+            xfull = Function(W.dual() if is_dual(xsubs[0]) else W)
         for xf, xs in zip(xfull.subfunctions, self._flatten(xsubs)):
             xf.assign(xs)
         return xfull
 
-    def _to_subs(self, xfull, xsubs=None, *, dual=False):
+    def _to_subs(self, xfull, xsubs=None):
         if xsubs is None:
             xsubs = [
                 Function(
-                    covi.function_space().dual() if dual else covi.function_space()
+                    covi.function_space().dual()
+                    if is_dual(xfull)
+                    else covi.function_space()
                 )
                 for covi in self.subcovariances
             ]
@@ -164,8 +167,8 @@ class MixedCovarianceOperator(FiredrakeMixedCovarianceOperator):
         xsubs = self._to_subs(x)
         return sum(covi.norm(xi) for covi, xi in zip(self.subcovariances, xsubs))
 
-    def _map(self, method, x, tensor, *, dual=False):
-        xsubs = self._to_subs(x, dual=dual)
+    def _map(self, method, x, tensor):
+        xsubs = self._to_subs(x)
         tsubs = [
             getattr(covi, method)(xi) for covi, xi in zip(self.subcovariances, xsubs)
         ]
@@ -174,22 +177,22 @@ class MixedCovarianceOperator(FiredrakeMixedCovarianceOperator):
     @PETSc.Log.EventDecorator()
     def apply_inverse(self, x, tensor=None):
         tensor = tensor or Cofunction(self.function_space().dual())
-        return self._map("apply_inverse", x, tensor, dual=True)
+        return self._map("apply_inverse", x, tensor)
 
     @PETSc.Log.EventDecorator()
     def apply_action(self, x, tensor=None):
         tensor = tensor or Function(self.function_space())
-        return self._map("apply_action", x, tensor, dual=False)
+        return self._map("apply_action", x, tensor)
 
     @PETSc.Log.EventDecorator()
     def sqrt_action(self, x: Function, *, tensor=None):
         tensor = tensor or Function(self.function_space())
-        return self._map("sqrt_action", x, tensor, dual=False)
+        return self._map("sqrt_action", x, tensor)
 
     @PETSc.Log.EventDecorator()
     def sqrt_inverse(self, x: Function, *, tensor=None):
         tensor = tensor or Function(self.function_space())
-        return self._map("sqrt_inverse", x, tensor, dual=False)
+        return self._map("sqrt_inverse", x, tensor)
 
     @PETSc.Log.EventDecorator()
     def decorrelated(self):
@@ -199,7 +202,7 @@ class MixedCovarianceOperator(FiredrakeMixedCovarianceOperator):
         )
 
 
-class EnsembleCovarianceOperator(MixedCovarianceOperator):
+class EnsembleCovarianceOperator(CovarianceOperatorBase):
     def __init__(self, W, subcovariances):
         if len(subcovariances) != len(W.local_spaces):
             raise ValueError(
@@ -221,50 +224,61 @@ class EnsembleCovarianceOperator(MixedCovarianceOperator):
             W._full_local_space, subcovariances
         )
 
+    def function_space(self):
+        return self._W
+
+    def rng(self):
+        return self._rngs
+
+    @property
+    def subcovariances(self):
+        return self._subcovariances
+
     @PETSc.Log.EventDecorator()
     def sample(self, rng=None, tensor=None):
         tensor = tensor or EnsembleFunction(self.function_space())
-        self._local_covariance.sample(rng=rng, tensor=tensor._full_local_function)
+        for covi, rngi, ti in zip(
+            self.subcovariances, rng or self.rng(), tensor.subfunctions
+        ):
+            covi.sample(rngi, tensor=ti)
         return tensor
 
     @PETSc.Log.EventDecorator()
     def norm(self, x):
         return self.function_space().ensemble_comm.allreduce(
-            self._local_covariance.norm(x._full_local_function)
+            sum(covi.norm(xi) for covi, xi in zip(self.subcovariances, x.subfunctions))
         )
+
+    def _map(self, method, x, tensor):
+        for covi, xi, ti in zip(
+            self.subcovariances, x.subfunctions, tensor.subfunctions
+        ):
+            getattr(covi, method)(xi, tensor=ti)
+        return tensor
 
     @PETSc.Log.EventDecorator()
     def apply_action(self, x, *, tensor=None):
         tensor = tensor or EnsembleFunction(self.function_space())
-        self._local_covariance.apply_action(
-            x._full_local_function,
-            tensor=tensor._full_local_function,
-        )
-        return tensor
+        return self._map("apply_action", x, tensor)
 
     @PETSc.Log.EventDecorator()
     def apply_inverse(self, x, *, tensor=None):
         tensor = tensor or EnsembleCofunction(self.function_space().dual())
-        self._local_covariance.apply_inverse(
-            x._full_local_function,
-            tensor=tensor._full_local_function,
-        )
-        return tensor
+        return self._map("apply_inverse", x, tensor)
 
     @PETSc.Log.EventDecorator()
     def sqrt_action(self, x, *, tensor=None):
         tensor = tensor or EnsembleFunction(self.function_space())
-        self._local_covariance.sqrt_action(
-            x._full_local_function,
-            tensor=tensor._full_local_function,
-        )
-        return tensor
+        return self._map("sqrt_action", x, tensor)
 
     @PETSc.Log.EventDecorator()
     def sqrt_inverse(self, x, *, tensor=None):
         tensor = tensor or EnsembleFunction(self.function_space())
-        self._local_covariance.sqrt_inverse(
-            x._full_local_function,
-            tensor=tensor._full_local_function,
+        return self._map("sqrt_inverse", x, tensor)
+
+    @PETSc.Log.EventDecorator()
+    def decorrelated(self):
+        return type(self)(
+            self.function_space(),
+            [covi.decorrelated() for covi in self.subcovariances],
         )
-        return tensor
