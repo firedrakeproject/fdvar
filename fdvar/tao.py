@@ -28,6 +28,7 @@ def ksp_objective_monitor(ksp, it, prnorm, tao=None):
     rnorm = r.norm()
     bnorm = b.norm()
     obj_val = shift - 0.5*x.dot((r + b))
+    ksp.setAttr('_fdvar_objective', obj_val)
     if it == 0:
         PETSc.Sys.Print(
             tab*tab_level + f'Residual norms for {ksp.prefix} solve.',

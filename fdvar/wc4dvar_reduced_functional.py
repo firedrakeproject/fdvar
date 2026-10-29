@@ -151,7 +151,10 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
 
         self.control.update(value)
 
-        return self.Jmodel(value) + self.Jobservations(value)
+        self._Jm = self.Jmodel(value)
+        self._Jo = self.Jobservations(value)
+
+        return self._Jm + self._Jo
 
     @stop_annotating()
     @PETSc.Log.EventDecorator()
@@ -177,16 +180,17 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
         """
         adj_input = adj_input[0] if isinstance(adj_input, (list, tuple)) else adj_input
         adj_args = {'adj_input': adj_input, 'apply_riesz': apply_riesz}
-        return (
-            self.Jobservations.derivative(**adj_args)
-            + self.Jmodel.derivative(**adj_args)
-        )
+        self._dJm_adj = self.Jmodel.derivative(**adj_args)
+        self._dJo_adj = self.Jobservations.derivative(**adj_args)
+        return self._dJm_adj + self._dJo_adj
 
     @stop_annotating()
     @PETSc.Log.EventDecorator()
     def tlm(self, m_dot: OverloadedType):
         m_dot = m_dot[0] if isinstance(m_dot, (list, tuple)) else m_dot
-        return self.Jmodel.tlm(m_dot) + self.Jobservations.tlm(m_dot)
+        self._dJm = self.Jmodel.tlm(m_dot)
+        self._dJo = self.Jobservations.tlm(m_dot)
+        return self._dJm + self._dJo
 
     @stop_annotating()
     @PETSc.Log.EventDecorator()
@@ -224,7 +228,10 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             LT = partial(self.JL.derivative, apply_riesz=apply_riesz)
             HT = partial(self.JH.derivative, apply_riesz=apply_riesz)
 
-            return LT(D(L(m_dot))) + HT(R(H(m_dot)))
+            self._d2Jm = LT(D(L(m_dot)))
+            self._d2Jo = HT(R(H(m_dot)))
+
+            return self._d2Jm + self._d2Jo
 
         m_dot = m_dot[0] if isinstance(m_dot, (list, tuple)) else m_dot
 
@@ -234,10 +241,9 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
         hess_args = {'m_dot': None, 'hessian_input': hessian_input,
                      'evaluate_tlm': False, 'apply_riesz': apply_riesz}
 
-        return (
-            self.Jobservations.hessian(**hess_args)
-            + self.Jmodel.hessian(**hess_args)
-        )
+        self._d2Jm = self.Jmodel.hessian(**hess_args)
+        self._d2Jo = self.Jobservations.hessian(**hess_args)
+        return self._d2Jm + self._d2Jo
 
     @PETSc.Log.EventDecorator()
     @contextmanager
