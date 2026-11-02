@@ -26,9 +26,9 @@ Features
 Preprint
 --------
 
-The library is described in this preprint:
+The preprint describing the library is available here:
 
-:download:`fdvar: Automated parallel-in-time 4DVar data assimilation for any
+:download:`Hope-Collins, Tabeart, Ham, 2026; fdvar: Automated parallel-in-time 4DVar data assimilation for any
 PDE using Firedrake<./fdvar_arxiv.pdf>`
 
 Installation
