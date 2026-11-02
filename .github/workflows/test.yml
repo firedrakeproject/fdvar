@@ -1,7 +1,7 @@
 name: Install and test fdvar
 
 on:
-  # Run on pushes to master
+  # Run on pushes to main
   push:
     branches:
       - main
@@ -11,7 +11,6 @@ on:
     # Scheduled run over at 0333 UTC Sunday to detect any upstream breaks.
     # * is a special character in YAML so you have to quote this string
     - cron:  '33 3 * * 0'
-
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 

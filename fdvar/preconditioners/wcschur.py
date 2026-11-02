@@ -31,23 +31,27 @@ class WC4DVarSchurPC(petsctools.PCBase):
     error covariances, and model error covariances at each observation
     time respectively.
 
-    KSPs are created for; :math:`\\tilde{L}`, for :math:`\\tilde{L}^{-T}` using
+    KSPs are created for :math:`\\tilde{L}` and :math:`\\tilde{L}^{-T}` using
     a :func:`~pyadjoint.optimization.tao_solver.ReducedFunctionalMat` for the
-    :class:`~firedrake.adjoint.allatonce_reduced_functional.AllAtOnceReducedFunctional`;
-    and for :math:`\\tilde{D}` using an :class:`~firedrake.ensemble.ensemble_mat.EnsembleBlockDiagonalMat`
-    where each block is a :func:`~firedrake.adjoint.covariance_operator.CovarianceMat`.
+    :class:`~fdvar.AllAtOnceReducedFunctional`, and for :math:`\\tilde{D}` using an
+    :func:`~firedrake.ensemble.ensemble_mat.EnsembleBlockDiagonalMat` where
+    each block is a :func:`~firedrake.adjoint.covariance_operator.CovarianceMat`.
 
-    PETSc Options
-    -------------
-    * ``-wcschur_l`` - Options for solving the :math:`L` and :math:`L^{T}`.
+    **PETSc Options**
+
+    * ``-wcschur_l`` - Options for the :class:`~petsc4py.PETSc.KSP` for :math:`L` and :math:`L^{T}`.
     * ``-wcschur_ltlm`` - Options solely for :math:`L`, e.g. monitors.
     * ``-wcschur_ladj`` - Options solely for :math:`L^{T}`, e.g. monitors.
-    * ``-wcschur_d`` - Options for solving the :math:`D^{-1}`
+    * ``-wcschur_d`` - Options for the :class:`~petsc4py.PETSc.KSP` for :math:`D^{-1}`
 
     Notes
     -----
     Identical solver options should be used for :math:`\\tilde{L}` and
-    :math:`\\tilde{L}^{T}` to ensure symmetry of :math:`\\tilde{S}^{-1}``.
+    :math:`\\tilde{L}^{T}` to ensure symmetry of :math:`\\tilde{S}^{-1}`.
+
+    The ``Pmat`` operator for this preconditioner must be a
+    :func:`~pyadjoint.optimization.tao_solver.ReducedFunctionalMat` for a
+    :class:`~fdvar.WC4DVarReducedFunctional`.
 
     References
     ----------
@@ -57,8 +61,8 @@ class WC4DVarSchurPC(petsctools.PCBase):
 
     See Also
     --------
-    ~firedrake.adjoint.fourdvar_reduced_functional.WC4DVarReducedFunctional
-    ~firedrake.adjoint.allatonce_reduced_functional.AllAtOnceReducedFunctional
+    ~fdvar.WC4DVarReducedFunctional
+    AllAtOnceReducedFunctional
     ~firedrake.ensemble.ensemble_mat.EnsembleBlockDiagonalMat
     ~firedrake.adjoint.covariance_operator.CovarianceMat
     """
@@ -66,7 +70,7 @@ class WC4DVarSchurPC(petsctools.PCBase):
     prefix = "wcschur_"
 
     @PETSc.Log.EventDecorator()
-    def initialize(self, pc):
+    def initialize(self, pc: PETSc.PC):
         # TODO: petsctools.cite("Fisher2017")
         super().initialize(pc)
 
@@ -85,8 +89,9 @@ class WC4DVarSchurPC(petsctools.PCBase):
 
         LTmat_p, Dmat_p, Lmat_p = self._schur_comp_mats(Jhat)
 
-        pc_amat_prefix = pc.getOptionsPrefix() + "pc_use_amat"
-        self.use_amat = PETSc.Options().getBool(pc_amat_prefix, False)
+        options = PETSc.Options(pc.getOptionsPrefix() or "")
+        self.use_amat = options.getBool("pc_use_amat", False)
+        self.scale = options.getReal("pc_wcschur_scale", 1.0)
 
         if self.use_amat:
             self.Ahat = self._get_wc4dvar_rf(A)
@@ -147,7 +152,7 @@ class WC4DVarSchurPC(petsctools.PCBase):
         self.Dksp.incrementTabLevel(1, parent=pc)
         self.Dksp.pc.incrementTabLevel(1, parent=pc)
 
-    def _schur_comp_mats(self, Jhat):
+    def _schur_comp_mats(self, Jhat: WC4DVarReducedFunctional):
 
         # L and LT: all-at-once system Mats
         Lmat = ReducedFunctionalMat(
@@ -170,7 +175,7 @@ class WC4DVarSchurPC(petsctools.PCBase):
 
         return LTmat, Dmat, Lmat
 
-    def _get_wc4dvar_rf(self, mat):
+    def _get_wc4dvar_rf(self, mat: PETSc.Mat):
         # 1. If we are using the primal formulation then the mat is the
         #    WC4DVar Hessian and we can grab the RF off the context.
         # 2. If we are using the saddle point formulation then the mat
@@ -191,32 +196,36 @@ class WC4DVarSchurPC(petsctools.PCBase):
         return Jhat
 
     @PETSc.Log.EventDecorator()
-    def apply(self, pc, x, y):
+    def apply(self, pc: PETSc.PC, x: PETSc.Vec, y: PETSc.Vec):
         rhs = x.copy()
         sol = y
         sol.zeroEntries()
 
         # Just chain the solve for each KSP
 
-        with petsctools.inserted_options(self.LTksp):
-            self.LTksp.solve(rhs, sol)
+        with PETSc.Log.Event(f"{type(self).__name__}.apply.LTSolve"):
+            with petsctools.inserted_options(self.LTksp):
+                self.LTksp.solve(rhs, sol)
 
         sol.copy(result=rhs)
         sol.zeroEntries()
 
-        with petsctools.inserted_options(self.Dksp):
-            self.Dksp.solve(rhs, sol)
+        with PETSc.Log.Event(f"{type(self).__name__}.apply.DSolve"):
+            with petsctools.inserted_options(self.Dksp):
+                self.Dksp.solve(rhs, sol)
 
         sol.copy(result=rhs)
         sol.zeroEntries()
 
-        with petsctools.inserted_options(self.Lksp):
-            self.Lksp.solve(rhs, sol)
+        with PETSc.Log.Event(f"{type(self).__name__}.apply.LSolve"):
+            with petsctools.inserted_options(self.Lksp):
+                self.Lksp.solve(rhs, sol)
 
         # y is already sol so no copy needed
+        y.scale(self.scale)
 
     @PETSc.Log.EventDecorator()
-    def update(self, pc):
+    def update(self, pc: PETSc.PC):
         # The mat should have taken care of updating
         # the Amat but we should check if the Pmat
         # needs updating.
@@ -229,7 +238,7 @@ class WC4DVarSchurPC(petsctools.PCBase):
         self.Dksp.setUp()
         self.Lksp.setUp()
 
-    def view(self, pc, viewer=None):
+    def view(self, pc: PETSc.PC, viewer: PETSc.Viewer | None = None):
         super().view(pc, viewer)
         if viewer is None:
             return
@@ -238,6 +247,8 @@ class WC4DVarSchurPC(petsctools.PCBase):
         # Need to view each of the subsolvers as well as ourselves.
         viewer.printfASCII(
             "PC to apply the approximate Weak Constraint 4DVar Schur complement.\n")
+        viewer.printfASCII(
+            f"  scale = {self.scale}\n")
         # L ksp
         viewer.printfASCII(
             "The KSP for the all-at-once tangent linear model L is:\n")

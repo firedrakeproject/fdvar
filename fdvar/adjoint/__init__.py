@@ -10,3 +10,12 @@ from fdvar.adjoint.ensemble_operations import (  # noqa: F401
 from fdvar.adjoint.reduced_functional_pipeline import (  # noqa: F401
     ReducedFunctionalPipeline,
 )
+
+__all__ = (
+    "EnsembleAdjVec",
+    "EnsembleTransform",
+    "EnsembleReduce",
+    "EnsembleBcast",
+    "EnsembleShift",
+    "ReducedFunctionalPipeline",
+)

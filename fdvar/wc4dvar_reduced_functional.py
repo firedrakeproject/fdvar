@@ -151,7 +151,10 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
 
         self.control.update(value)
 
-        return self.Jmodel(value) + self.Jobservations(value)
+        self._Jm = self.Jmodel(value)
+        self._Jo = self.Jobservations(value)
+
+        return self._Jm + self._Jo
 
     @stop_annotating()
     @PETSc.Log.EventDecorator()
@@ -177,16 +180,17 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
         """
         adj_input = adj_input[0] if isinstance(adj_input, (list, tuple)) else adj_input
         adj_args = {'adj_input': adj_input, 'apply_riesz': apply_riesz}
-        return (
-            self.Jobservations.derivative(**adj_args)
-            + self.Jmodel.derivative(**adj_args)
-        )
+        self._dJm_adj = self.Jmodel.derivative(**adj_args)
+        self._dJo_adj = self.Jobservations.derivative(**adj_args)
+        return self._dJm_adj + self._dJo_adj
 
     @stop_annotating()
     @PETSc.Log.EventDecorator()
     def tlm(self, m_dot: OverloadedType):
         m_dot = m_dot[0] if isinstance(m_dot, (list, tuple)) else m_dot
-        return self.Jmodel.tlm(m_dot) + self.Jobservations.tlm(m_dot)
+        self._dJm = self.Jmodel.tlm(m_dot)
+        self._dJo = self.Jobservations.tlm(m_dot)
+        return self._dJm + self._dJo
 
     @stop_annotating()
     @PETSc.Log.EventDecorator()
@@ -224,7 +228,10 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             LT = partial(self.JL.derivative, apply_riesz=apply_riesz)
             HT = partial(self.JH.derivative, apply_riesz=apply_riesz)
 
-            return LT(D(L(m_dot))) + HT(R(H(m_dot)))
+            self._d2Jm = LT(D(L(m_dot)))
+            self._d2Jo = HT(R(H(m_dot)))
+
+            return self._d2Jm + self._d2Jo
 
         m_dot = m_dot[0] if isinstance(m_dot, (list, tuple)) else m_dot
 
@@ -234,13 +241,12 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
         hess_args = {'m_dot': None, 'hessian_input': hessian_input,
                      'evaluate_tlm': False, 'apply_riesz': apply_riesz}
 
-        return (
-            self.Jobservations.hessian(**hess_args)
-            + self.Jmodel.hessian(**hess_args)
-        )
+        self._d2Jm = self.Jmodel.hessian(**hess_args)
+        self._d2Jo = self.Jobservations.hessian(**hess_args)
+        return self._d2Jm + self._d2Jo
 
-    @contextmanager
     @PETSc.Log.EventDecorator()
+    @contextmanager
     def recording_stages(self, sequential=True, nstages=None, **stage_kwargs):
         if not sequential:
             raise ValueError("Recording stages concurrently not yet implemented")
@@ -318,7 +324,7 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             yi = Function(cov.function_space())
             with set_working_tape() as tape:
                 observation_norms.append(
-                    ReducedFunctional(cov.norm(yi), Control(yi), tape=tape))
+                    ReducedFunctional(0.5*cov.norm(yi), Control(yi), tape=tape))
 
         # Create a ReducedFunctional for each model error covariance operator
         model_covariances = [self.background_covariance] if rank == 0 else []
@@ -328,7 +334,13 @@ class WC4DVarReducedFunctional(AbstractReducedFunctional):
             xi = Function(cov.function_space())
             with set_working_tape() as tape:
                 model_norms.append(
-                    ReducedFunctional(cov.norm(xi), Control(xi), tape=tape))
+                    ReducedFunctional(0.5*cov.norm(xi), Control(xi), tape=tape))
+
+        # sanity checks on RFs and norm types
+        for R_, H_ in zip(self.observation_covariances, self.observation_rfs):
+            assert R_.function_space() == H_.functional.function_space()
+        for D_, M_ in zip(self.model_covariances, self.model_rfs):
+            assert D_.function_space() == M_.functional.function_space()
 
         # Now we have all the various per-stage components (M, H, B, D, R, etc)
         # we can build the space-time collective RFs that will evaluate the
