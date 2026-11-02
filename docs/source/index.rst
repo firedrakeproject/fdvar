@@ -23,6 +23,14 @@ Features
 * Access to range of composable optimisation and linear solvers via PETSc/TAO.
 * Works with any PDE expressable using the Unified Form Language.
 
+Preprint
+--------
+
+The library is described in this preprint:
+
+:download:`fdvar: Automated parallel-in-time 4DVar data assimilation for any
+PDE using Firedrake<./fdvar_arxiv.pdf>`
+
 Installation
 ------------
 
