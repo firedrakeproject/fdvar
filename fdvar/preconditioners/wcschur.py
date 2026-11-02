@@ -89,8 +89,9 @@ class WC4DVarSchurPC(petsctools.PCBase):
 
         LTmat_p, Dmat_p, Lmat_p = self._schur_comp_mats(Jhat)
 
-        pc_amat_prefix = pc.getOptionsPrefix() + "pc_use_amat"
-        self.use_amat = PETSc.Options().getBool(pc_amat_prefix, False)
+        options = PETSc.Options(pc.getOptionsPrefix() or "")
+        self.use_amat = options.getBool("pc_use_amat", False)
+        self.scale = options.getReal("pc_wcschur_scale", 1.0)
 
         if self.use_amat:
             self.Ahat = self._get_wc4dvar_rf(A)
@@ -221,6 +222,7 @@ class WC4DVarSchurPC(petsctools.PCBase):
                 self.Lksp.solve(rhs, sol)
 
         # y is already sol so no copy needed
+        y.scale(self.scale)
 
     @PETSc.Log.EventDecorator()
     def update(self, pc: PETSc.PC):
@@ -245,6 +247,8 @@ class WC4DVarSchurPC(petsctools.PCBase):
         # Need to view each of the subsolvers as well as ourselves.
         viewer.printfASCII(
             "PC to apply the approximate Weak Constraint 4DVar Schur complement.\n")
+        viewer.printfASCII(
+            f"  scale = {self.scale}\n")
         # L ksp
         viewer.printfASCII(
             "The KSP for the all-at-once tangent linear model L is:\n")
