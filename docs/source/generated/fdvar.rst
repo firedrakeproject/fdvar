@@ -26,10 +26,26 @@ fdvar.allatonce\_reduced\_functional module
    :show-inheritance:
    :undoc-members:
 
+fdvar.covariance\_operator module
+---------------------------------
+
+.. automodule:: fdvar.covariance_operator
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 fdvar.sc4dvar\_reduced\_functional module
 -----------------------------------------
 
 .. automodule:: fdvar.sc4dvar_reduced_functional
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+fdvar.tao module
+----------------
+
+.. automodule:: fdvar.tao
    :members:
    :show-inheritance:
    :undoc-members:

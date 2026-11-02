@@ -13,11 +13,62 @@ _enum_to_ksp_norm = {
 }
 
 
-def ksp_objective_monitor(ksp, it, prnorm, tao=None):
+def ksp_objective_monitor(ksp: PETSc.KSP, it: int, prnorm: float, tao: PETSc.TAO | None = None, c: float | None = None):
+    """
+    KSP monitor for the KSP residual, true residual and quadratic objective.
+
+    This assumes that the linear system :math:`Ax=b` originates from a quadratic
+    minimisation problem :math:`\\frac{1}{2}x^{T}Ax - x^{T}b + c`.
+
+    Three alternatives are available for the shift :math:`c`:
+
+    * The default value is :math:`c=0`.
+    * A constant value can be set by currying the ``c`` kwarg.
+    * If the KSP is solving the linear system from a Newton-type TAO object then
+      the shift should be the latest value of the TAO objective. This can be
+      achieved by currying the ``tao`` kwarg.
+
+    Standard usage assuming :math:`c=0`:
+
+    .. code-block:: python3
+
+        tao = petsc4py.PETSc.TAO()
+        ...
+        tao.ksp.setMonitor(ksp_objective_monitor)
+
+    Usage setting the TAO object to use to calculate :math:`c` (similar usage for
+    setting a constant :math:`c`):
+
+    .. code-block:: python3
+
+        from functools import partial
+        tao.ksp.setMonitor(partial(ksp_objective_monitor, tao=tao))
+
+
+    Parameters
+    ----------
+    KSP :
+        The KSP object to test for convergence.
+    it :
+        The current number of KSP iterations.
+    prnorm :
+        The current KSP residual. The type of this residual will be the default
+        norm type for this KSP type, or whatever was set with ``-ksp_norm_type``.
+    tao :
+        The outer TAO optimisation solver to get the shift :math:`c` from.
+        Mutually exclusive with ``c``.
+    c :
+        The shift :math:`c`.
+        Mutually exclusive with ``tao``.
+    """
     tab_level = ksp.getTabLevel()
     tab = '    '
+    if tao is not None and c is not None:
+        raise ValueError("Cannot both set tao and c, choose one.")
     if tao:
         _, shift, _, _, _, _ = tao.getSolutionStatus()
+    elif c:
+        shift = c
     else:
         shift = 0.
     # obj = 0.5 * (x' * A * x) - (x' * b)
@@ -28,7 +79,7 @@ def ksp_objective_monitor(ksp, it, prnorm, tao=None):
     rnorm = r.norm()
     bnorm = b.norm()
     obj_val = shift - 0.5*x.dot((r + b))
-    ksp.setAttr('_fdvar_objective', obj_val)
+    ksp.setAttr('_tao_objective', obj_val)
     if it == 0:
         PETSc.Sys.Print(
             tab*tab_level + f'Residual norms for {ksp.prefix} solve.',
@@ -44,18 +95,20 @@ def ksp_objective_monitor(ksp, it, prnorm, tao=None):
     )
 
 
-def tao_converged_maxits_test(tao):
+def tao_converged_maxits_test(tao: PETSc.TAO):
     """
     Convergence test that allows TAO to declare convergence if
     the maximum number of iterations is reached.
 
-    Options Database Key
-    --------------------
-    -tao_converged_maxits (true|false)
+    **PETSc Options**
+
+    * ``-tao_converged_maxits (true|false)`` - Treat reaching the maximum number
+        of iterations (``-tao_max_it``) as convergence rather than divergence.
+    * See :class:`~petsc4py.PETSc.TAO` tolerance docs for other options.
 
     Parameters
     ----------
-    tao : petsc4py.PETSc.TAO
+    tao :
         The TAO object to test for convergence.
 
     Notes
@@ -64,9 +117,9 @@ def tao_converged_maxits_test(tao):
     TaoDefaultConvergenceTest except the following checks which
     rely on TAO attributes that are not yet exposed in petsc4py:
 
-    -tao_max_funcs - sets maximum number of function evaluations.
-    -tao_steptol - stop if the trust region radius becomes less than tol.
-    -tao_ls_failure - stop if the linesearch fails.
+    * ``-tao_max_funcs`` - sets maximum number of function evaluations.
+    * ``-tao_steptol`` - stop if the trust region radius becomes less than tol.
+    * ``-tao_ls_failure`` - stop if the linesearch fails.
     """
     its, f, gnorm, cnorm, _step, reason = tao.getSolutionStatus()
     gatol, grtol, gttol = tao.getTolerances()
