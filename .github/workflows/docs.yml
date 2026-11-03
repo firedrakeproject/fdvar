@@ -1,8 +1,6 @@
 name: Build/deploy docs
 
 on:
-  # TODO: DROP BEFORE MERGE
-  pull_request:
   # Run on pushes to main
   push:
     branches:
