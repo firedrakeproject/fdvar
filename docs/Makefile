@@ -11,7 +11,7 @@ BUILDDIR      = build
 
 GENERATED_FILES = source/demos/* source/generated/*
 
-.PHONY: help Makefile clean copy_demos
+.PHONY: help Makefile clean copy_demos linkcheck
 
 # Put it first so that "make" without argument is like "make help".
 help:
@@ -22,16 +22,19 @@ clean:
 	rm -r $(GENERATED_FILES)
 
 copy_demos:
-	install -d source/demos
-	cp ../demos/*/*.rst source/demos
-	for file in source/demos/*.py.rst; do pylit $$file; done
+	install -d $(SOURCEDIR)/demos
+	cp ../demos/*/*.rst $(SOURCEDIR)/demos
+	for file in $(SOURCEDIR)/demos/*.py.rst; do pylit $$file; done
 
 apidoc: copy_demos
-	sphinx-apidoc --force --no-toc --module-first -o "$(SOURCEDIR)" ../fdvar 
+	sphinx-apidoc --force --no-toc --module-first -o $(SOURCEDIR)/generated ../fdvar
+
+linkcheck: apidoc
+	@$(SPHINXBUILD) -b linkcheck $(SPHINXOPTS) $(SOURCEDIR) $(BUILDDIR)/linkcheck
 
 html: Makefile copy_demos
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" $(BUILDDIR) $(SPHINXOPTS) $(O)
-	cp source/demos/*.py $(BUILDDIR)/$@/demos/
+	cp $(SOURCEDIR)/demos/*.py $(BUILDDIR)/$@/demos/
 
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
