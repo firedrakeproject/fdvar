@@ -76,7 +76,7 @@ Getting in touch
 ----------------
 
 Please get in touch with any questions related to ``fdvar`` by raising an issue on the `GitHub repository <https://github.com/firedrakeproject/fdvar/>`_.
-For more general Firedrake queries please see the `Firedrake contact page <https://www.firedrakeproject.org/contact/>`_
+For more general Firedrake queries please see the `Firedrake contact page <https://www.firedrakeproject.org/contact.html>`_
 
 Contributors
 ------------
