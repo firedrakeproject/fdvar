@@ -30,8 +30,8 @@ jobs:
       # TODO: Switch to latest firedrake release after 2026.4
       image: firedrakeproject/firedrake-vanilla-default:dev-main
     env:
-      # Tell pyop2 to complain if SPMD assumptions are broken
-      PYOP2_SPMD_STRICT: 1
+      # Tell pyop3 to complain if SPMD assumptions are broken
+      PYOP3_SPMD_STRICT: 1
       # Make sure tests with >6 processes are not silently skipped
       PYTEST_MPI_MAX_NPROCS: 6
       # Tell PETSc to ignore the pytest command line arguments
