@@ -89,7 +89,6 @@ intersphinx_mapping = {
     'petsctools': ('https://www.firedrakeproject.org/petsctools/', None),
     'petsc4py': ('https://petsc.org/release/petsc4py/', None),
     'pyadjoint': ('https://pyadjoint.org/', None),
-    'pyop2': ('https://op2.github.io/PyOP2', None),
     'python': ('https://docs.python.org/3', None),
     'ufl': ('https://docs.fenicsproject.org/ufl/main/', None),
 }
